@@ -1,0 +1,531 @@
+import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { BottomNav as DealerBottomNav } from '@/features/dealer/BottomNav';
+import { CallElectricianScreen as DealerCallElectricianScreen } from '@/features/dealer/CallElectricianScreen';
+import { ElectriciansScreen as DealerElectriciansScreen } from '@/features/dealer/ElectriciansScreen';
+import { HomeScreen as DealerHomeScreen } from '@/features/dealer/screens/HomeScreen';
+import { MemberTierScreen as DealerMemberTierScreen } from '@/features/dealer/screens/MemberTierScreen';
+import { ProfileScreen as DealerProfileScreen } from '@/features/dealer/ProfileScreen';
+import { ProductScreen as DealerProductScreen } from '@/features/dealer/ProductScreen';
+import { BottomNav as ElectricianBottomNav } from '@/features/electrician/BottomNav';
+import { ElectricianTierScreen } from '@/features/electrician/ElectricianTierScreen';
+import { HomeScreen as ElectricianHomeScreen } from '@/features/electrician/HomeScreen';
+import { NotificationScreen as ElectricianNotificationScreen } from '@/features/electrician/NotificationScreen';
+import { OnboardingScreen } from '@/features/electrician/screens/OnboardingScreen';
+import { ProductScreen as ElectricianProductScreen } from '@/features/electrician/screens/ProductScreen';
+import { ProfileScreen as ElectricianProfileScreen } from '@/features/electrician/ProfileScreen';
+import { RewardsScreen as ElectricianRewardsScreen } from '@/features/electrician/RewardsScreen';
+import { ScanScreen as ElectricianScanScreen } from '@/features/electrician/ScanScreen';
+import { WalletScreen as ElectricianWalletScreen } from '@/features/electrician/WalletScreen';
+import {
+  WalletBankDetailsScreen,
+  WalletDealerBonusScreen,
+  WalletTransferPointsScreen,
+} from '@/features/profile/WalletLinkedPages';
+import { PreferenceContext, type AppLanguage, usePreferenceValue } from '@/shared/preferences';
+import { colors } from '@/shared/theme/colors';
+import type { Screen, UserRole } from '@/shared/types/navigation';
+import type { RewardHistoryItem } from '@/shared/types/rewards';
+import { GetStartedScreen } from '@/features/onboarding/GetStartedScreen';
+import { AuthProvider, useAuth } from '@/shared/context/AuthContext';
+import { storage } from '@/shared/api';
+
+type OnboardingStartOptions = {
+  passwordConfigured?: boolean;
+  passwordValue?: string;
+};
+
+export default function Index() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
+}
+
+function AppContent() {
+  const { isAuthenticated, isLoading: authLoading, user, role: authRole, login } = useAuth();
+  const [currentScreen, setCurrentScreen] = useState<Screen>('home');
+  const [screenResetKey, setScreenResetKey] = useState(0);
+  const [showOnboarding, setShowOnboarding] = useState(true);
+  const [showGetStarted, setShowGetStarted] = useState(true);
+  const [currentRole, setCurrentRole] = useState<UserRole>('electrician');
+  const [authResolved, setAuthResolved] = useState(false);
+  const [selectedProductCategory, setSelectedProductCategory] = useState('fanbox');
+  const [language, setLanguage] = useState<AppLanguage>('English');
+  const [darkMode, setDarkMode] = useState(false);
+  const [passwordConfiguredByRole, setPasswordConfiguredByRole] = useState<
+    Record<UserRole, boolean>
+  >({
+    dealer: false,
+    electrician: false,
+  });
+  const [profilePhotoByRole, setProfilePhotoByRole] = useState<Record<UserRole, string | null>>({
+    dealer: null,
+    electrician: null,
+  });
+  const [passwordValueByRole, setPasswordValueByRole] = useState<Record<UserRole, string>>({
+    dealer: '',
+    electrician: '',
+  });
+  const [electricianRewardPoints, setElectricianRewardPoints] = useState(
+    user?.totalPoints ?? 0
+  );
+  const [electricianRewardScans, setElectricianRewardScans] = useState(
+    user?.totalScans ?? 0
+  );
+  const [electricianRewardHistory, setElectricianRewardHistory] = useState<RewardHistoryItem[]>([]);
+  const [hasUnreadNotif, setHasUnreadNotif] = useState(false);
+
+  const isDealer = currentRole === 'dealer';
+
+  // Once auth loading is done, set initial state
+  useEffect(() => {
+    if (!authLoading && !authResolved) {
+      setAuthResolved(true);
+      if (isAuthenticated && user && authRole) {
+        setCurrentRole(authRole as UserRole);
+        // Sync points/scans from real API profile
+        setElectricianRewardPoints(user.totalPoints ?? 0);
+        setElectricianRewardScans(user.totalScans ?? 0);
+        setShowOnboarding(false);
+        setShowGetStarted(false);
+      }
+    }
+  }, [authLoading, authResolved, isAuthenticated, user, authRole]);
+
+  // Keep points/scans in sync when user profile updates (admin changes reflected)
+  // Always use server value — admin can increase OR decrease points
+  useEffect(() => {
+    if (user) {
+      if (user.totalPoints !== undefined) {
+        setElectricianRewardPoints(user.totalPoints);
+      }
+      if (user.totalScans !== undefined) {
+        setElectricianRewardScans(user.totalScans);
+      }
+      // Sync profile photo from API (admin can set it)
+      if (user.profileImage) {
+        const role = authRole as UserRole;
+        if (role) {
+          setProfilePhotoByRole((current) => {
+            // Only update if no local photo has been set, or if API photo changed
+            if (!current[role] || current[role] !== user.profileImage) {
+              return { ...current, [role]: user.profileImage! };
+            }
+            return current;
+          });
+        }
+      }
+    }
+  }, [user?.totalPoints, user?.totalScans, user?.profileImage, authRole]);
+
+  // Fetch unread notification count — poll every 30s when authenticated
+  useEffect(() => {
+    if (!isAuthenticated || !user) return;
+    const checkUnread = async () => {
+      try {
+        const { notificationsApi: notifApi } = await import('@/shared/api');
+        const res = await notifApi.getAll(authRole as string, user.id);
+        if (!res.data?.length) { setHasUnreadNotif(false); return; }
+        const seenIds = await storage.getSeenNotificationIds();
+        const hasNew = res.data.some((n: any) => !seenIds.has(n.id));
+        setHasUnreadNotif(hasNew);
+      } catch { /* silent */ }
+    };
+    void checkUnread();
+    const interval = setInterval(checkUnread, 30000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated, user?.id, authRole]);
+
+  const preferenceValue = usePreferenceValue({ language, setLanguage, darkMode, setDarkMode });
+  const appTheme = preferenceValue.theme;
+  const statusBarStyle = darkMode ? 'light' : 'dark';
+
+  const handleNavigate = useCallback(
+    (screen: Screen) => {
+      if (screen === currentScreen) {
+        setScreenResetKey((current) => current + 1);
+      }
+
+      if (screen === 'product') {
+        setSelectedProductCategory((current) => current || 'fanbox');
+      }
+
+      setCurrentScreen(screen);
+    },
+    [currentScreen]
+  );
+
+  const handleOpenProductCategory = useCallback((category: string) => {
+    setSelectedProductCategory(category);
+    setCurrentScreen('product');
+  }, []);
+
+  const handleSignOut = useCallback(() => {
+    void (async () => {
+      await storage.clearAll();
+      setShowOnboarding(true);
+      setCurrentRole('electrician');
+      setCurrentScreen('home');
+      setSelectedProductCategory('fanbox');
+    })();
+  }, []);
+
+  const handleNotificationsSeen = useCallback(() => {
+    setHasUnreadNotif(false);
+  }, []);
+
+  const handleElectricianRewardCommit = useCallback(
+    (items: Omit<RewardHistoryItem, 'id' | 'time'>[]) => {
+      if (!items.length) {
+        return { addedPoints: 0, addedScans: 0 };
+      }
+
+      const committedItems = items.map((item, index) => ({
+        ...item,
+        id: `${item.code}-${Date.now()}-${index}`,
+        time: new Date().toLocaleString('en-IN', {
+          day: '2-digit',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+      }));
+      const addedPoints = committedItems.reduce((sum, item) => sum + item.points, 0);
+
+      setElectricianRewardPoints((current) => current + addedPoints);
+      setElectricianRewardScans((current) => current + committedItems.length);
+      setElectricianRewardHistory((current) => [...committedItems.reverse(), ...current]);
+
+      return {
+        addedPoints,
+        addedScans: committedItems.length,
+      };
+    },
+    []
+  );
+
+  const activeScreen = useMemo(() => {
+    if (isDealer) {
+      switch (currentScreen) {
+        case 'home':
+          return (
+            <DealerHomeScreen
+              onNavigate={handleNavigate}
+              onOpenProductCategory={handleOpenProductCategory}
+              profilePhotoUri={profilePhotoByRole.dealer}
+              hasUnreadNotif={hasUnreadNotif}
+            />
+          );
+        case 'product':
+          return (
+            <DealerProductScreen
+              onNavigate={handleNavigate}
+              initialCategory={selectedProductCategory}
+            />
+          );
+        case 'electricians':
+          return <DealerElectriciansScreen onNavigate={handleNavigate} />;
+        case 'call_electrician':
+          return <DealerCallElectricianScreen />;
+        case 'notification':
+          return <ElectricianNotificationScreen onNavigate={handleNavigate} role="dealer" onNotificationsSeen={handleNotificationsSeen} />;
+        case 'scan':
+          return (
+            <ElectricianScanScreen
+              onNavigate={handleNavigate}
+              rewardHistory={electricianRewardHistory}
+              onCommitRewards={handleElectricianRewardCommit}
+            />
+          );
+        case 'rewards':
+          return <ElectricianRewardsScreen onBack={() => setCurrentScreen('home')} />;
+        case 'wallet':
+          return (
+            <ElectricianWalletScreen
+              role="dealer"
+              onNavigate={handleNavigate}
+              totalPoints={Math.round(electricianRewardPoints * 0.05)}
+              totalScans={electricianRewardScans}
+              historyItems={electricianRewardHistory}
+            />
+          );
+        case 'profile':
+          return (
+            <DealerProfileScreen
+              onNavigate={handleNavigate}
+              onSignOut={handleSignOut}
+              hasPasswordConfigured={passwordConfiguredByRole.dealer}
+              storedPassword={passwordValueByRole.dealer}
+              onPasswordConfiguredChange={(configured) =>
+                setPasswordConfiguredByRole((current) => ({ ...current, dealer: configured }))
+              }
+              onPasswordChange={(password) =>
+                setPasswordValueByRole((current) => ({ ...current, dealer: password }))
+              }
+              language={language}
+              onLanguageChange={setLanguage}
+              darkMode={darkMode}
+              onDarkModeChange={setDarkMode}
+              profilePhotoUri={profilePhotoByRole.dealer}
+              onProfilePhotoChange={(photoUri) =>
+                setProfilePhotoByRole((current) => ({ ...current, dealer: photoUri }))
+              }
+            />
+          );
+        case 'dealer_tier':
+          return <DealerMemberTierScreen onBack={() => setCurrentScreen('home')} />;
+        case 'bank_details':
+          return (
+            <WalletBankDetailsScreen
+              onBack={() => setCurrentScreen('wallet')}
+              language={language}
+              onLanguageChange={setLanguage}
+              darkMode={darkMode}
+              onDarkModeChange={setDarkMode}
+            />
+          );
+        case 'dealer_bonus':
+          return (
+            <WalletDealerBonusScreen
+              onBack={() => setCurrentScreen('wallet')}
+              language={language}
+              onLanguageChange={setLanguage}
+              darkMode={darkMode}
+              onDarkModeChange={setDarkMode}
+            />
+          );
+        case 'transfer_points':
+          return (
+            <WalletTransferPointsScreen
+              onBack={() => setCurrentScreen('wallet')}
+              onNavigate={handleNavigate}
+              language={language}
+              onLanguageChange={setLanguage}
+              darkMode={darkMode}
+              onDarkModeChange={setDarkMode}
+            />
+          );
+        default:
+          return (
+            <DealerHomeScreen
+              onNavigate={handleNavigate}
+              onOpenProductCategory={handleOpenProductCategory}
+              profilePhotoUri={profilePhotoByRole.dealer}
+              hasUnreadNotif={hasUnreadNotif}
+            />
+          );
+      }
+    }
+
+    switch (currentScreen) {
+      case 'home':
+        return (
+          <ElectricianHomeScreen
+            onNavigate={handleNavigate}
+            onOpenProductCategory={handleOpenProductCategory}
+            profilePhotoUri={profilePhotoByRole.electrician}
+            totalPoints={electricianRewardPoints}
+            totalScans={electricianRewardScans}
+            hasUnreadNotif={hasUnreadNotif}
+          />
+        );
+      case 'product':
+        return (
+          <ElectricianProductScreen
+            onNavigate={handleNavigate}
+            initialCategory={selectedProductCategory}
+          />
+        );
+      case 'notification':
+        return <ElectricianNotificationScreen onNavigate={handleNavigate} role="electrician" onNotificationsSeen={handleNotificationsSeen} />;
+      case 'scan':
+        return (
+          <ElectricianScanScreen
+            onNavigate={handleNavigate}
+            rewardHistory={electricianRewardHistory}
+            onCommitRewards={handleElectricianRewardCommit}
+          />
+        );
+      case 'rewards':
+        return <ElectricianRewardsScreen onBack={() => setCurrentScreen('home')} />;
+      case 'profile':
+        return (
+          <ElectricianProfileScreen
+            onNavigate={handleNavigate}
+            onSignOut={handleSignOut}
+            hasPasswordConfigured={passwordConfiguredByRole.electrician}
+            storedPassword={passwordValueByRole.electrician}
+            onPasswordConfiguredChange={(configured) =>
+              setPasswordConfiguredByRole((current) => ({ ...current, electrician: configured }))
+            }
+            onPasswordChange={(password) =>
+              setPasswordValueByRole((current) => ({ ...current, electrician: password }))
+            }
+            language={language}
+            onLanguageChange={setLanguage}
+            darkMode={darkMode}
+            onDarkModeChange={setDarkMode}
+            profilePhotoUri={profilePhotoByRole.electrician}
+            onProfilePhotoChange={(photoUri) =>
+              setProfilePhotoByRole((current) => ({ ...current, electrician: photoUri }))
+            }
+            totalPoints={electricianRewardPoints}
+            totalScans={electricianRewardScans}
+          />
+        );
+      case 'wallet':
+        return (
+          <ElectricianWalletScreen
+            role="electrician"
+            onNavigate={handleNavigate}
+            totalPoints={electricianRewardPoints}
+            totalScans={electricianRewardScans}
+            historyItems={electricianRewardHistory}
+          />
+        );
+      case 'electrician_tier':
+        return <ElectricianTierScreen onBack={() => setCurrentScreen('home')} />;
+      case 'bank_details':
+        return (
+          <WalletBankDetailsScreen
+            onBack={() => setCurrentScreen('wallet')}
+            language={language}
+            onLanguageChange={setLanguage}
+            darkMode={darkMode}
+            onDarkModeChange={setDarkMode}
+          />
+        );
+      case 'transfer_points':
+        return (
+          <WalletTransferPointsScreen
+            onBack={() => setCurrentScreen('wallet')}
+            onNavigate={handleNavigate}
+            language={language}
+            onLanguageChange={setLanguage}
+            darkMode={darkMode}
+            onDarkModeChange={setDarkMode}
+          />
+        );
+      default:
+        return (
+          <ElectricianHomeScreen
+            onNavigate={handleNavigate}
+            onOpenProductCategory={handleOpenProductCategory}
+            profilePhotoUri={profilePhotoByRole.electrician}
+            totalPoints={electricianRewardPoints}
+            totalScans={electricianRewardScans}
+            hasUnreadNotif={hasUnreadNotif}
+          />
+        );
+    }
+  }, [
+    currentScreen,
+    isDealer,
+    passwordConfiguredByRole.dealer,
+    passwordConfiguredByRole.electrician,
+    profilePhotoByRole.dealer,
+    profilePhotoByRole.electrician,
+    passwordValueByRole.dealer,
+    passwordValueByRole.electrician,
+    electricianRewardHistory,
+    electricianRewardPoints,
+    electricianRewardScans,
+    language,
+    darkMode,
+    selectedProductCategory,
+    handleElectricianRewardCommit,
+    handleNavigate,
+    handleOpenProductCategory,
+    handleSignOut,
+    handleNotificationsSeen,
+    hasUnreadNotif,
+  ]);
+
+  if (showOnboarding) {
+    if (showGetStarted) {
+      return (
+        <View style={styles.root}>
+          <ExpoStatusBar style={statusBarStyle} />
+          <PreferenceContext.Provider value={preferenceValue}>
+            <GetStartedScreen onComplete={() => setShowGetStarted(false)} />
+          </PreferenceContext.Provider>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.root}>
+        <ExpoStatusBar style={statusBarStyle} />
+        <PreferenceContext.Provider value={preferenceValue}>
+          <OnboardingScreen
+            onGetStarted={(role: UserRole, options?: OnboardingStartOptions) => {
+              if (typeof options?.passwordConfigured === 'boolean') {
+                setPasswordConfiguredByRole((current) => ({
+                  ...current,
+                  [role]: options.passwordConfigured,
+                }));
+                if (!options.passwordConfigured) {
+                  setPasswordValueByRole((current) => ({ ...current, [role]: '' }));
+                }
+              }
+              if (typeof options?.passwordValue === 'string') {
+                setPasswordValueByRole((current) => ({
+                  ...current,
+                  [role]: options.passwordValue,
+                }));
+              }
+              // Load real user from global store set during OTP verify
+              const realUser = (globalThis as any).__srvLoginUser;
+              if (realUser) {
+                login(realUser, role);
+                if (role === 'electrician') {
+                  setElectricianRewardPoints(realUser.totalPoints ?? 0);
+                  setElectricianRewardScans(realUser.totalScans ?? 0);
+                }
+                delete (globalThis as any).__srvLoginUser;
+              }
+              setCurrentRole(role);
+              setCurrentScreen('home');
+              setShowOnboarding(false);
+            }}
+          />
+        </PreferenceContext.Provider>
+      </View>
+    );
+  }
+
+  return (
+    <PreferenceContext.Provider value={preferenceValue}>
+      <View style={[styles.root, { backgroundColor: appTheme.bg }]}>
+        <SafeAreaView style={[styles.safeArea, { backgroundColor: appTheme.bg }]} edges={['top']}>
+          <ExpoStatusBar style={statusBarStyle} />
+          <View style={styles.content} key={`${currentRole}-${currentScreen}-${screenResetKey}`}>
+            {activeScreen}
+          </View>
+        </SafeAreaView>
+        {isDealer ? (
+          <DealerBottomNav currentScreen={currentScreen} onNavigate={handleNavigate} />
+        ) : (
+          <ElectricianBottomNav currentScreen={currentScreen} onNavigate={handleNavigate} />
+        )}
+      </View>
+    </PreferenceContext.Provider>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: colors.appBackground,
+  },
+  safeArea: {
+    flex: 1,
+  },
+  content: {
+    flex: 1,
+  },
+});
