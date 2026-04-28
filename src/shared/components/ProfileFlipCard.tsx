@@ -200,8 +200,9 @@ export default function ProfileFlipCard({ profile, role = 'electrician', photoUr
     }
   };
 
+  const fallbackText = tx('Not available');
   const dealerName =
-    role === 'dealer' ? profile?.name || 'Harshvardhan' : profile?.dealer_name || 'Bansal Chauke';
+    role === 'dealer' ? profile?.name || fallbackText : profile?.dealer_name || fallbackText;
   const formatTranslatedLocation = (parts: (string | undefined)[]) =>
     parts
       .filter(Boolean)
@@ -210,35 +211,34 @@ export default function ProfileFlipCard({ profile, role = 'electrician', photoUr
 
   const dealerLocation =
     role === 'dealer'
-      ? formatTranslatedLocation([profile?.town || 'Chauke', profile?.state || 'Punjab'])
-      : formatTranslatedLocation([profile?.dealer_town || 'Chauke', profile?.state || 'Punjab']);
-  const dealerPhone =
-    '+91 ' +
-    (role === 'dealer' ? profile?.phone || '9162038214' : profile?.dealer_phone || '9465258788');
+      ? formatTranslatedLocation([profile?.town, profile?.state]) || fallbackText
+      : formatTranslatedLocation([profile?.dealer_town, profile?.state]) || fallbackText;
+  const dealerPhoneValue = role === 'dealer' ? profile?.phone : profile?.dealer_phone;
+  const dealerPhone = dealerPhoneValue ? '+91 ' + dealerPhoneValue : fallbackText;
   const dealerAddress = profile?.address
     ? profile.address
         .replace(/\bPunjab\b/g, tx('Punjab'))
         .replace(/\bMansa\b/g, tx('Mansa'))
         .replace(/\bIndia\b/g, tx('India'))
-    : `Green Valley Colony, ${tx('Mansa')}, ${tx('Punjab')} 151505, ${tx('India')}`;
+    : fallbackText;
   const frontLocation =
     role === 'dealer'
       ? dealerLocation
-      : formatTranslatedLocation([profile?.town || 'Chauke', profile?.state || 'Punjab']);
+      : formatTranslatedLocation([profile?.town, profile?.state]) || fallbackText;
   const codeLabel = role === 'dealer' ? tx('Dealer Code') : tx('Electrician Code');
   const backThirdLabel = role === 'dealer' ? tx('Address') : tx('Phone Number');
   const backThirdValue = role === 'dealer' ? dealerAddress : dealerPhone;
   const exportName =
-    (profile?.name || dealerName || 'srv-profile-card')
+    (profile?.name || dealerName || fallbackText)
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '') || 'srv-profile-card';
 
   const buildPdfHtml = (logoDataUri: string | null) => {
-    const profileName = escapeHtml(profile?.name || 'Harshvardhan');
-    const profilePhone = escapeHtml('+91 ' + (profile?.phone || '9162038214'));
+    const profileName = escapeHtml(profile?.name || fallbackText);
+    const profilePhone = escapeHtml(profile?.phone ? '+91 ' + profile.phone : fallbackText);
     const location = escapeHtml(frontLocation);
-    const safeCode = escapeHtml(code || 'PB03900-001');
+    const safeCode = escapeHtml(code || fallbackText);
     const safeDealerName = escapeHtml(dealerName);
     const safeDealerLocation = escapeHtml(dealerLocation);
     const safeDealerPhone = escapeHtml(dealerPhone);
@@ -407,9 +407,9 @@ export default function ProfileFlipCard({ profile, role = 'electrician', photoUr
                     <Text style={[styles.roleText, darkMode ? styles.roleTextDark : null]}>
                       {role === 'dealer' ? t('dealerPartner') : t('electricianPartner')}
                     </Text>
-                    <Text style={styles.nameText}>{profile?.name || 'Harshvardhan'}</Text>
+                    <Text style={styles.nameText}>{profile?.name || fallbackText}</Text>
                     <Text style={[styles.phoneText, darkMode ? styles.phoneTextDark : null]}>
-                      +91 {profile?.phone || '9162038214'}
+                      {profile?.phone ? '+91 ' + profile.phone : fallbackText}
                     </Text>
                     <Animated.Text
                       style={[
@@ -426,7 +426,7 @@ export default function ProfileFlipCard({ profile, role = 'electrician', photoUr
               </View>
 
               <View style={styles.frontBottomRow}>
-                <DetailPill label={codeLabel} value={code || 'PB03900-001'} />
+                <DetailPill label={codeLabel} value={code || fallbackText} />
                 <DetailPill label="Location" value={frontLocation} icon={<LocationIcon />} />
               </View>
             </LinearGradient>
@@ -687,3 +687,5 @@ const styles = StyleSheet.create({
     width: '100%',
   },
 });
+
+

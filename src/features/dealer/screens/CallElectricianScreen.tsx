@@ -40,7 +40,7 @@ export function CallElectricianScreen() {
   const [electricians, setElectricians] = useState<{ id: string; name: string; phone: string; city?: string }[]>([]);
 
   useEffect(() => {
-    electriciansApi.getAll(1, 100).then((res) => {
+    electriciansApi.getCallList().then((res) => {
       if (res.data?.length) {
         setElectricians(res.data.map((e: any) => ({
           id: e.id,
@@ -50,7 +50,19 @@ export function CallElectricianScreen() {
           whatsapp: `91${e.phone}`,
         })));
       }
-    }).catch(() => {});
+    }).catch(() => {
+      // fallback: try getAll
+      electriciansApi.getAll(1, 100).then((res2) => {
+        if (res2.data?.length) {
+          setElectricians(res2.data.map((e: any) => ({
+            id: e.id,
+            name: e.name,
+            phone: e.phone,
+            city: e.city ?? '',
+          })));
+        }
+      }).catch(() => {});
+    });
   }, []);
 
   return (
@@ -82,7 +94,7 @@ export function CallElectricianScreen() {
             <TouchableOpacity
               style={[styles.actionBtn, styles.whatsAppBtn]}
               activeOpacity={0.88}
-              onPress={() => Linking.openURL(`https://wa.me/${item.whatsapp}`)}
+              onPress={() => Linking.openURL(`https://wa.me/${item.phone}`)}
             >
               <WhatsAppIcon />
             </TouchableOpacity>

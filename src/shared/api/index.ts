@@ -1,4 +1,4 @@
 export * from './services';
-export * from './storage';
-export * from './client';
+export { api } from './client';
+export { storage } from './storage';
 export { API_BASE_URL } from './config';

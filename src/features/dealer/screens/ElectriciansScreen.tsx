@@ -37,44 +37,6 @@ type Electrician = {
   status: ElectricianStatus;
 };
 
-const DEMO_OTP = '2468';
-
-const seedElectricians: Electrician[] = [
-  {
-    id: 'el-101',
-    name: 'Harshvardhan',
-    phone: '9162038214',
-    city: 'Mansa, Punjab',
-    joinedAt: 'Connected today',
-    createdAt: new Date().toISOString(),
-    totalScans: 24,
-    points: 4250,
-    status: 'Active',
-  },
-  {
-    id: 'el-102',
-    name: 'Rohit Kumar',
-    phone: '9876543210',
-    city: 'Bathinda, Punjab',
-    joinedAt: 'Connected 3 days ago',
-    createdAt: new Date(new Date().getFullYear(), new Date().getMonth(), 8).toISOString(),
-    totalScans: 18,
-    points: 2870,
-    status: 'Active',
-  },
-  {
-    id: 'el-103',
-    name: 'Aman Sharma',
-    phone: '9810012345',
-    city: 'Ludhiana, Punjab',
-    joinedAt: 'Invite pending',
-    createdAt: new Date(new Date().getFullYear(), new Date().getMonth() - 1, 20).toISOString(),
-    totalScans: 0,
-    points: 0,
-    status: 'Pending',
-  },
-];
-
 function TeamIcon({ color = '#FFFFFF', size = 24 }: { color?: string; size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -187,10 +149,7 @@ export function ElectriciansScreen({ onNavigate }: { onNavigate?: (screen: Scree
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [newCity, setNewCity] = useState('');
-  const [otp, setOtp] = useState('');
-  const [otpRequested, setOtpRequested] = useState(false);
-  const [phoneVerified, setPhoneVerified] = useState(false);
-  const [otpCountdown, setOtpCountdown] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
   const heroFloat = useRef(new Animated.Value(0)).current;
   const homeBtnScale = useRef(new Animated.Value(1)).current;
 
@@ -230,17 +189,6 @@ export function ElectriciansScreen({ onNavigate }: { onNavigate?: (screen: Scree
     }).finally(() => setApiLoading(false));
   }, [apiLoaded]);
 
-  useEffect(() => {
-    if (otpCountdown <= 0) return;
-    const timer = setInterval(() => {
-      setOtpCountdown((prev) => {
-        if (prev <= 1) return 0;
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [otpCountdown]);
-
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase();
     if (!term) return electricians;
@@ -265,61 +213,35 @@ export function ElectriciansScreen({ onNavigate }: { onNavigate?: (screen: Scree
   const activeCount = electricians.filter((item) => item.status === 'Active').length;
   const totalElectricians = electricians.length;
   const addedThisMonth = electricians.filter(isAddedThisMonth).length;
-  const totalPoints = electricians.reduce((sum, item) => sum + item.points, 0);
   const cleanPhone = newPhone.replace(/\D/g, '').slice(0, 10);
-  const canRequestOtp = cleanPhone.length === 10 && !phoneVerified;
-  const canVerifyOtp = otpRequested && otp.length === 4 && !phoneVerified;
   const canAddElectrician =
     newName.trim().length >= 3 &&
     cleanPhone.length === 10 &&
     newCity.trim().length >= 2 &&
-    phoneVerified;
+    !submitting;
 
   const resetForm = () => {
     setNewName('');
     setNewPhone('');
     setNewCity('');
-    setOtp('');
-    setOtpRequested(false);
-    setPhoneVerified(false);
+    setSubmitting(false);
   };
 
   const handlePhoneChange = (value: string) => {
     const nextPhone = value.replace(/\D/g, '').slice(0, 10);
     setNewPhone(nextPhone);
-    setOtp('');
-    setOtpRequested(false);
-    setPhoneVerified(false);
   };
 
-  const handleRequestOtp = () => {
-    if (!canRequestOtp) return;
-    setOtpRequested(true);
-    setPhoneVerified(false);
-    setOtp('');
-    setOtpCountdown(50);
-  };
-
-  const handleVerifyOtp = () => {
-    if (!canVerifyOtp) return;
-    if (otp !== DEMO_OTP) {
-      Alert.alert(
-        tx('Invalid OTP'),
-        tx('Please enter the correct 4-digit OTP to verify the phone number.')
-      );
-      return;
-    }
-    setPhoneVerified(true);
-  };
-
-  const handleAddElectrician = () => {
+  const handleAddElectrician = async () => {
     if (!canAddElectrician) return;
+    setSubmitting(true);
 
-    electriciansApi.add({
-      name: newName.trim(),
-      phone: cleanPhone,
-      city: newCity.trim(),
-    }).then((res) => {
+    try {
+      const res = await electriciansApi.add({
+        name: newName.trim(),
+        phone: cleanPhone,
+        city: newCity.trim(),
+      });
       const e = res.electrician;
       setElectricians((current) => [
         {
@@ -335,25 +257,15 @@ export function ElectriciansScreen({ onNavigate }: { onNavigate?: (screen: Scree
         },
         ...current,
       ]);
-    }).catch(() => {
-      // Fallback: add locally
-      setElectricians((current) => [
-        {
-          id: `el-${Date.now()}`,
-          name: newName.trim(),
-          phone: cleanPhone,
-          city: newCity.trim(),
-          joinedAt: 'Added just now',
-          createdAt: new Date().toISOString(),
-          totalScans: 0,
-          points: 0,
-          status: 'Active',
-        },
-        ...current,
-      ]);
-    });
-    resetForm();
-    setShowAddModal(false);
+      resetForm();
+      setShowAddModal(false);
+    } catch (error: any) {
+      const message =
+        error?.message ??
+        tx('Unable to save electrician right now. Please check the details and try again.');
+      Alert.alert(tx('Add electrician failed'), message);
+      setSubmitting(false);
+    }
   };
 
   const handleHomePressIn = () => {
@@ -564,7 +476,7 @@ export function ElectriciansScreen({ onNavigate }: { onNavigate?: (screen: Scree
               <View style={styles.modalHeader}>
                 <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>{tx('Add electrician')}</Text>
                 <Text style={[styles.modalSub, { color: theme.textMuted }]}>
-                  {tx('Verify the number first, then complete the remaining details.')}
+                  {tx('This electrician will be saved directly to your dealer network in the live database.')}
                 </Text>
               </View>
               <ScrollView
@@ -586,102 +498,23 @@ export function ElectriciansScreen({ onNavigate }: { onNavigate?: (screen: Scree
 
                 <View style={styles.fieldGroup}>
                   <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>{tx('Electrician number')}</Text>
-                  <View style={styles.phoneRow}>
-                    <TextInput
-                      value={newPhone}
-                      onChangeText={handlePhoneChange}
-                      keyboardType="phone-pad"
-                      placeholder={tx('10-digit mobile number')}
-                      placeholderTextColor={darkMode ? '#64748B' : '#9A9FB1'}
-                      style={[styles.fieldInput, styles.phoneInput, { backgroundColor: darkMode ? theme.soft : '#FBFDFF', borderColor: theme.border, color: theme.textPrimary }]}
-                      maxLength={10}
-                    />
-                    <Pressable
-                      onPress={handleRequestOtp}
-                      disabled={!canRequestOtp}
-                      style={[styles.inlineButton, !canRequestOtp && styles.inlineButtonDisabled]}
-                    >
-                      <Text
-                        style={[
-                          styles.inlineButtonText,
-                          !canRequestOtp && styles.inlineButtonTextDisabled,
-                        ]}
-                      >
-                        {tx('Verify')}
-                      </Text>
-                    </Pressable>
-                  </View>
+                  <TextInput
+                    value={newPhone}
+                    onChangeText={handlePhoneChange}
+                    keyboardType="phone-pad"
+                    placeholder={tx('10-digit mobile number')}
+                    placeholderTextColor={darkMode ? '#64748B' : '#9A9FB1'}
+                    style={[styles.fieldInput, { backgroundColor: darkMode ? theme.soft : '#FBFDFF', borderColor: theme.border, color: theme.textPrimary }]}
+                    maxLength={10}
+                  />
                 </View>
 
-                {otpRequested ? (
-                  <View style={[styles.otpCard, darkMode ? styles.otpCardDark : null]}>
-                    <Text style={[styles.otpInfo, { color: darkMode ? theme.textSecondary : '#3F5E86' }]}>
-                      {tx('OTP sent to +91')} {cleanPhone}
-                    </Text>
-                    <Text style={[styles.otpHint, { color: darkMode ? '#BFDBFE' : '#17438E' }]}>
-                      {tx('Demo OTP')}: {DEMO_OTP}
-                    </Text>
-                    <View style={styles.fieldGroup}>
-                      <View
-                        style={[
-                          styles.otpInputRow,
-                          {
-                            backgroundColor: darkMode ? theme.soft : '#FBFDFF',
-                            borderColor: theme.border,
-                          },
-                        ]}
-                      >
-                        <TextInput
-                          value={otp}
-                          onChangeText={(value) => setOtp(value.replace(/\D/g, '').slice(0, 4))}
-                          keyboardType="numeric"
-                          placeholder={tx('Enter OTP')}
-                          placeholderTextColor={darkMode ? '#64748B' : '#9A9FB1'}
-                          style={[styles.otpInput, { color: theme.textPrimary }]}
-                        />
-                        {otpCountdown > 0 ? (
-                          <Text
-                            style={styles.otpTimerSmall}
-                          >{`0:${otpCountdown >= 10 ? otpCountdown : `0${otpCountdown}`}`}</Text>
-                        ) : (
-                          <Pressable onPress={handleRequestOtp} disabled={!canRequestOtp}>
-                            <Text
-                              style={[
-                                styles.otpResendSmall,
-                                !canRequestOtp && styles.otpResendSmallDisabled,
-                              ]}
-                            >
-                              {tx('Resend')}
-                            </Text>
-                          </Pressable>
-                        )}
-                      </View>
-                      <Pressable
-                        onPress={handleVerifyOtp}
-                        disabled={!canVerifyOtp}
-                        style={[styles.blockButton, styles.confirmButton, !canVerifyOtp && styles.inlineButtonDisabled]}
-                      >
-                        <Text
-                          style={[
-                            styles.inlineButtonText,
-                            !canVerifyOtp && styles.inlineButtonTextDisabled,
-                          ]}
-                        >
-                          {tx('Confirm')}
-                        </Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                ) : null}
-
-                {phoneVerified ? (
-                  <View style={[styles.verifiedRow, darkMode ? styles.verifiedRowDark : null]}>
-                    <ShieldIcon color={darkMode ? '#86EFAC' : '#1A8F58'} />
-                    <Text style={[styles.verifiedText, darkMode ? styles.verifiedTextDark : null]}>
-                      {tx('Phone number verified successfully')}
-                    </Text>
-                  </View>
-                ) : null}
+                <View style={[styles.verifiedRow, darkMode ? styles.verifiedRowDark : null]}>
+                  <ShieldIcon color={darkMode ? '#86EFAC' : '#1A8F58'} />
+                  <Text style={[styles.verifiedText, darkMode ? styles.verifiedTextDark : null]}>
+                    {tx('Submission uses the live dealer-electrician API and saves directly to the database')}
+                  </Text>
+                </View>
 
                 <View style={styles.fieldGroup}>
                   <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>{tx('City')}</Text>
@@ -711,7 +544,9 @@ export function ElectriciansScreen({ onNavigate }: { onNavigate?: (screen: Scree
                       !canAddElectrician && styles.primaryButtonDisabled,
                     ]}
                   >
-                    <Text style={styles.primaryButtonText}>{tx('Add Electrician')}</Text>
+                    <Text style={styles.primaryButtonText}>
+                      {submitting ? tx('Saving...') : tx('Add Electrician')}
+                    </Text>
                   </Pressable>
                 </View>
               </ScrollView>

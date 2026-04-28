@@ -17,6 +17,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { withWebSafeNativeDriver } from '@/shared/animations/nativeDriver';
+import { useAppData } from '@/shared/context/AppDataContext';
+import { useAuth } from '@/shared/context/AuthContext';
 import type { Screen } from '@/shared/types/navigation';
 import { formatCountText, usePreferenceContext } from '@/shared/preferences';
 import ProfileFlipCard from '@/shared/components/ProfileFlipCard';
@@ -24,8 +26,305 @@ import { createShadow } from '@/shared/theme/shadows';
 import { TestimonialShowcase, type TestimonialItem } from '@/shared/components/TestimonialShowcase';
 import { WebsitePromoSection } from '@/shared/components/WebsitePromoSection';
 import { ElectricianTierIcon, getElectricianTier } from './ElectricianTierScreen';
-import { productsApi, testimonialsApi, bannersApi } from '@/shared/api';
-import { useAuth } from '@/shared/context/AuthContext';
+
+// ── Category color system (same as ProductScreen) ─────────────────────
+type CatColorScheme = {
+  gradient: [string, string, string];
+  scanBg: string;
+  scanText: string;
+  cardGradient: [string, string, string];
+  iconBg: string;
+};
+
+const CAT_COLORS: Record<string, CatColorScheme> = {
+  fanbox:       { gradient: ['#4A637B','#6F879F','#93A8BE'], scanBg:'#F5F8FB', scanText:'#4A637B', cardGradient:['#FAFBFD','#E9EEF5','#D5DEE9'], iconBg:'#E5ECF4' },
+  concealedbox: { gradient: ['#3B6E8C','#5A8FAD','#8AB4CC'], scanBg:'#F0F7FB', scanText:'#3B6E8C', cardGradient:['#F8FBFD','#E4EFF6','#CCDDE9'], iconBg:'#DFF0F8' },
+  modular:      { gradient: ['#5C4A8C','#7B6AAD','#A898CC'], scanBg:'#F5F3FB', scanText:'#5C4A8C', cardGradient:['#FDFCFF','#EDE9F8','#DDD6F0'], iconBg:'#EAE5F8' },
+  mcb:          { gradient: ['#1D4ED8','#3B6EF0','#7BA4F8'], scanBg:'#EFF6FF', scanText:'#1D4ED8', cardGradient:['#F8FBFF','#E0EEFF','#C7DDFF'], iconBg:'#DBEAFE' },
+  busbar:       { gradient: ['#B45309','#D97706','#F59E0B'], scanBg:'#FFFBEB', scanText:'#B45309', cardGradient:['#FFFEF8','#FEF3C7','#FDE68A'], iconBg:'#FEF3C7' },
+  exhaust:      { gradient: ['#065F46','#059669','#34D399'], scanBg:'#F0FDF4', scanText:'#065F46', cardGradient:['#F8FFF9','#DCFCE7','#BBF7D0'], iconBg:'#D1FAE5' },
+  led:          { gradient: ['#92400E','#D97706','#FCD34D'], scanBg:'#FFFBEB', scanText:'#92400E', cardGradient:['#FFFEF5','#FEF9C3','#FEF08A'], iconBg:'#FEF3C7' },
+  changeover:   { gradient: ['#7C3AED','#8B5CF6','#A78BFA'], scanBg:'#F5F3FF', scanText:'#7C3AED', cardGradient:['#FDFCFF','#EDE9FE','#DDD6FE'], iconBg:'#EDE9FE' },
+  mainswitch:   { gradient: ['#BE123C','#E11D48','#FB7185'], scanBg:'#FFF1F2', scanText:'#BE123C', cardGradient:['#FFF8F9','#FFE4E6','#FECDD3'], iconBg:'#FFE4E6' },
+  louver:       { gradient: ['#0F766E','#0D9488','#2DD4BF'], scanBg:'#F0FDFA', scanText:'#0F766E', cardGradient:['#F8FFFD','#CCFBF1','#99F6E4'], iconBg:'#CCFBF1' },
+  axialfan:     { gradient: ['#065F46','#059669','#34D399'], scanBg:'#F0FDF4', scanText:'#065F46', cardGradient:['#F8FFF9','#DCFCE7','#BBF7D0'], iconBg:'#D1FAE5' },
+  ledflood:     { gradient: ['#92400E','#D97706','#FCD34D'], scanBg:'#FFFBEB', scanText:'#92400E', cardGradient:['#FFFEF5','#FEF9C3','#FEF08A'], iconBg:'#FEF3C7' },
+  multipin:     { gradient: ['#BE123C','#E11D48','#FB7185'], scanBg:'#FFF1F2', scanText:'#BE123C', cardGradient:['#FFF8F9','#FFE4E6','#FECDD3'], iconBg:'#FFE4E6' },
+  pintop:       { gradient: ['#5C4A8C','#7B6AAD','#A898CC'], scanBg:'#F5F3FB', scanText:'#5C4A8C', cardGradient:['#FDFCFF','#EDE9F8','#DDD6F0'], iconBg:'#EAE5F8' },
+};
+const DYNAMIC_PALETTES: CatColorScheme[] = [
+  { gradient: ['#4A637B','#6F879F','#93A8BE'], scanBg:'#F5F8FB', scanText:'#4A637B', cardGradient:['#FAFBFD','#E9EEF5','#D5DEE9'], iconBg:'#E5ECF4' },
+  { gradient: ['#1D4ED8','#3B6EF0','#7BA4F8'], scanBg:'#EFF6FF', scanText:'#1D4ED8', cardGradient:['#F8FBFF','#E0EEFF','#C7DDFF'], iconBg:'#DBEAFE' },
+  { gradient: ['#065F46','#059669','#34D399'], scanBg:'#F0FDF4', scanText:'#065F46', cardGradient:['#F8FFF9','#DCFCE7','#BBF7D0'], iconBg:'#D1FAE5' },
+  { gradient: ['#7C3AED','#8B5CF6','#A78BFA'], scanBg:'#F5F3FF', scanText:'#7C3AED', cardGradient:['#FDFCFF','#EDE9FE','#DDD6FE'], iconBg:'#EDE9FE' },
+  { gradient: ['#B45309','#D97706','#F59E0B'], scanBg:'#FFFBEB', scanText:'#B45309', cardGradient:['#FFFEF8','#FEF3C7','#FDE68A'], iconBg:'#FEF3C7' },
+  { gradient: ['#BE123C','#E11D48','#FB7185'], scanBg:'#FFF1F2', scanText:'#BE123C', cardGradient:['#FFF8F9','#FFE4E6','#FECDD3'], iconBg:'#FFE4E6' },
+  { gradient: ['#0F766E','#0D9488','#2DD4BF'], scanBg:'#F0FDFA', scanText:'#0F766E', cardGradient:['#F8FFFD','#CCFBF1','#99F6E4'], iconBg:'#CCFBF1' },
+  { gradient: ['#5C4A8C','#7B6AAD','#A898CC'], scanBg:'#F5F3FB', scanText:'#5C4A8C', cardGradient:['#FDFCFF','#EDE9F8','#DDD6F0'], iconBg:'#EAE5F8' },
+];
+const catColorCache: Record<string, CatColorScheme> = {};
+function getCatColor(id: string, index = 0): CatColorScheme {
+  if (CAT_COLORS[id]) return CAT_COLORS[id];
+  if (catColorCache[id]) return catColorCache[id];
+  const palette = DYNAMIC_PALETTES[index % DYNAMIC_PALETTES.length];
+  catColorCache[id] = palette;
+  return palette;
+}
+
+// ── Category Icon SVGs (same as ProductScreen) ────────────────────────
+function CatIcon({ id, size = 24, color = '#173E80' }: { id: string; size?: number; color?: string }) {
+  const s = size;
+  switch (id) {
+    case 'fanbox': return (
+      <Svg width={s} height={s} viewBox="0 0 32 32" fill="none">
+        <Rect x="3" y="3" width="12" height="12" rx="2.5" stroke={color} strokeWidth="2" />
+        <Rect x="17" y="3" width="12" height="12" rx="2.5" stroke={color} strokeWidth="2" />
+        <Rect x="3" y="17" width="12" height="12" rx="2.5" stroke={color} strokeWidth="2" />
+        <Rect x="17" y="17" width="12" height="12" rx="2.5" stroke={color} strokeWidth="2" />
+        <Circle cx="9" cy="9" r="2" stroke={color} strokeWidth="1.5" />
+        <Circle cx="23" cy="9" r="2" stroke={color} strokeWidth="1.5" />
+        <Circle cx="9" cy="23" r="2" stroke={color} strokeWidth="1.5" />
+        <Circle cx="23" cy="23" r="2" stroke={color} strokeWidth="1.5" />
+      </Svg>
+    );
+    case 'mcb': return (
+      <Svg width={s} height={s} viewBox="0 0 32 32" fill="none">
+        <Rect x="5" y="3" width="22" height="26" rx="3" stroke={color} strokeWidth="2" />
+        <Rect x="9" y="7" width="6" height="8" rx="1.5" stroke={color} strokeWidth="1.6" />
+        <Rect x="17" y="7" width="6" height="8" rx="1.5" stroke={color} strokeWidth="1.6" />
+        <Path d="M9 20h14M9 23h10" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <Path d="M14 7V5M18 7V5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </Svg>
+    );
+    case 'busbar': return (
+      <Svg width={s} height={s} viewBox="0 0 32 32" fill="none">
+        <Rect x="3" y="5" width="26" height="22" rx="3" stroke={color} strokeWidth="2" />
+        <Path d="M3 12h26M3 20h26" stroke={color} strokeWidth="1.8" />
+        <Path d="M9 5v5M16 5v5M23 5v5M9 20v7M16 20v7M23 20v7" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+        <Rect x="7" y="13.5" width="4" height="5" rx="1" stroke={color} strokeWidth="1.4" />
+        <Rect x="14" y="13.5" width="4" height="5" rx="1" stroke={color} strokeWidth="1.4" />
+        <Rect x="21" y="13.5" width="4" height="5" rx="1" stroke={color} strokeWidth="1.4" />
+      </Svg>
+    );
+    case 'changeover': return (
+      <Svg width={s} height={s} viewBox="0 0 32 32" fill="none">
+        <Rect x="3" y="4" width="26" height="24" rx="3" stroke={color} strokeWidth="2" />
+        <Path d="M10 14l6-6 6 6" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <Path d="M22 18l-6 6-6-6" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <Path d="M16 8v16" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeDasharray="2 2" />
+      </Svg>
+    );
+    case 'led': case 'ledflood': return (
+      <Svg width={s} height={s} viewBox="0 0 32 32" fill="none">
+        <Path d="M16 4a8 8 0 018 8c0 3-1.5 5.5-4 7v3H12v-3c-2.5-1.5-4-4-4-7a8 8 0 018-8z" stroke={color} strokeWidth="2" />
+        <Path d="M12 22h8M13 25h6" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+        <Path d="M16 28v1" stroke={color} strokeWidth="2" strokeLinecap="round" />
+        <Path d="M8 12H6M24 12h2M10 6.5L8.5 5M22 6.5l1.5-1.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <Circle cx="16" cy="12" r="3" stroke={color} strokeWidth="1.5" />
+      </Svg>
+    );
+    case 'exhaust': case 'axialfan': return (
+      <Svg width={s} height={s} viewBox="0 0 32 32" fill="none">
+        <Circle cx="16" cy="16" r="12" stroke={color} strokeWidth="2" />
+        <Circle cx="16" cy="16" r="3" stroke={color} strokeWidth="1.8" />
+        <Path d="M16 13c0-4 3-6 3-6s-1 4-3 6z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+        <Path d="M19 16c4 0 6 3 6 3s-4-1-6-3z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+        <Path d="M16 19c0 4-3 6-3 6s1-4 3-6z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+        <Path d="M13 16c-4 0-6-3-6-3s4 1 6 3z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+      </Svg>
+    );
+    case 'mainswitch': return (
+      <Svg width={s} height={s} viewBox="0 0 32 32" fill="none">
+        <Rect x="5" y="4" width="22" height="24" rx="3" stroke={color} strokeWidth="2" />
+        <Circle cx="16" cy="13" r="5" stroke={color} strokeWidth="2" />
+        <Path d="M16 10v3l2 2" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <Path d="M9 22h14M11 25h10" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </Svg>
+    );
+    case 'louver': return (
+      <Svg width={s} height={s} viewBox="0 0 32 32" fill="none">
+        <Rect x="3" y="3" width="26" height="26" rx="3" stroke={color} strokeWidth="2" />
+        <Path d="M6 10h20M6 16h20M6 22h20" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      </Svg>
+    );
+    case 'concealedbox': return (
+      <Svg width={s} height={s} viewBox="0 0 32 32" fill="none">
+        <Rect x="4" y="4" width="24" height="24" rx="3" stroke={color} strokeWidth="2" />
+        <Rect x="9" y="9" width="14" height="14" rx="2" stroke={color} strokeWidth="1.8" />
+        <Circle cx="16" cy="16" r="2.5" stroke={color} strokeWidth="1.5" />
+      </Svg>
+    );
+    case 'modular': return (
+      <Svg width={s} height={s} viewBox="0 0 32 32" fill="none">
+        <Rect x="3" y="3" width="26" height="26" rx="3" stroke={color} strokeWidth="2" />
+        <Rect x="7" y="7" width="8" height="8" rx="1.5" stroke={color} strokeWidth="1.6" />
+        <Rect x="17" y="7" width="8" height="8" rx="1.5" stroke={color} strokeWidth="1.6" />
+        <Rect x="7" y="17" width="8" height="8" rx="1.5" stroke={color} strokeWidth="1.6" />
+        <Rect x="17" y="17" width="8" height="8" rx="1.5" stroke={color} strokeWidth="1.6" />
+      </Svg>
+    );
+    default: return (
+      <Svg width={s} height={s} viewBox="0 0 32 32" fill="none">
+        <Rect x="3" y="3" width="12" height="12" rx="2.5" stroke={color} strokeWidth="2" />
+        <Rect x="17" y="3" width="12" height="12" rx="2.5" stroke={color} strokeWidth="2" />
+        <Rect x="3" y="17" width="12" height="12" rx="2.5" stroke={color} strokeWidth="2" />
+        <Rect x="17" y="17" width="12" height="12" rx="2.5" stroke={color} strokeWidth="2" />
+      </Svg>
+    );
+  }
+}
+
+// ── Real CDN images for each category (same as ProductScreen) ────────
+const CAT_IMAGES: Record<string, string> = {
+  fanbox:        'https://srvelectricals.com/cdn/shop/files/FC_4_17-30.png?v=1757426626&width=320',
+  concealedbox:  'https://srvelectricals.com/cdn/shop/files/CRD_PL_3.png?v=1757426566&width=320',
+  modular:       'https://srvelectricals.com/cdn/shop/files/3x3_679e5d30-ecf2-446e-9452-354bbf4c4a26.png?v=1757426377&width=320',
+  mcb:           'https://srvelectricals.com/cdn/shop/files/MCB_Box_4_Way_GI.png?v=1757426418&width=320',
+  busbar:        'https://srvelectricals.com/cdn/shop/files/Bus_Bar_100A_Super.png?v=1757426672&width=320',
+  exhaust:       'https://srvelectricals.com/cdn/shop/files/AP-Turtle-Fan.webp?v=1747938680&width=320',
+  led:           'https://srvelectricals.com/cdn/shop/files/FloodLightSleek.png?v=1757426471&width=320',
+  changeover:    'https://srvelectricals.com/cdn/shop/files/ACO_100A_FP.png?v=1757426480&width=320',
+  mainswitch:    'https://srvelectricals.com/cdn/shop/files/CO_32A_DP_PRM.png?v=1757426515&width=320',
+  louver:        'https://srvelectricals.com/cdn/shop/files/Louver_6_inch.png?v=1757426390&width=320',
+  axialfan:      'https://srvelectricals.com/cdn/shop/files/AP-Turtle-Fan.webp?v=1747938680&width=320',
+  ledflood:      'https://srvelectricals.com/cdn/shop/files/FloodLightLense_533x.png?v=1757426472&width=320',
+  kitkat:        'https://cdn.shopify.com/s/files/1/0651/4583/1466/files/KK_RGL_b6278cc2-47de-4af4-ab1b-3f39a31a3469.png?v=1757426689',
+  connector:     'https://cdn.shopify.com/s/files/1/0651/4583/1466/files/Connector.png?v=1774344618',
+  pvcpipe:       'https://cdn.shopify.com/s/files/1/0651/4583/1466/files/PVCPipe_d645973b-bd5e-41de-8eb0-53331cce1c19.png?v=1772786167',
+  pvcbend:       'https://cdn.shopify.com/s/files/1/0651/4583/1466/files/PVCBend_d61ba143-800b-4706-b068-0f30bd6fac45.png?v=1772533125',
+  pvcbatten:     'https://cdn.shopify.com/s/files/1/0651/4583/1466/files/PVC_Batten.png?v=1773475766',
+  ventilation:   'https://cdn.shopify.com/s/files/1/0651/4583/1466/files/VentilationFan_3594eae1-055d-4a86-b75c-b8cbbfcb22d6.png?v=1763708515',
+  doorbell:      'https://cdn.shopify.com/s/files/1/0651/4583/1466/files/Door_Bell_Tring_Trong.png?v=1757426728',
+  solarled:      'https://cdn.shopify.com/s/files/1/0651/4583/1466/files/SolarLEDPoleLight50w.png?v=1757426727',
+  streetled:     'https://cdn.shopify.com/s/files/1/0651/4583/1466/files/LEDFront.jpg?v=1765629593',
+  warmer:        'https://cdn.shopify.com/s/files/1/0651/4583/1466/files/RoomWarmerH3_ae88b047-f837-4807-a7c7-52e2e3107d4f.png?v=1772694850',
+  heater:        'https://cdn.shopify.com/s/files/1/0651/4583/1466/files/HeatBlowerM2_04f122c9-0cc4-4df8-a422-cd731205da85.png?v=1772694634',
+  autochangeover:'https://cdn.shopify.com/s/files/1/0651/4583/1466/files/ACO_100A_Phase_Selector.png?v=1757426707',
+  coversheet:    'https://cdn.shopify.com/s/files/1/0651/4583/1466/files/FanBoxCoverSheet.png?v=1757426708',
+};
+
+function getCatImage(id: string, apiImageUrl?: string | null): string {
+  return apiImageUrl || CAT_IMAGES[id] || CAT_IMAGES.fanbox;
+}
+
+// ── Animated Category Image (float + breathe — same as ProductScreen) ─
+function AnimatedCatImage({ uri, size }: { uri: string; size: number }) {
+  const floatY = useRef(new Animated.Value(0)).current;
+  const imgScale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const floatLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatY, withWebSafeNativeDriver({ toValue: -7, duration: 1600, easing: Easing.inOut(Easing.sin) })),
+        Animated.timing(floatY, withWebSafeNativeDriver({ toValue: 0, duration: 1600, easing: Easing.inOut(Easing.sin) })),
+      ])
+    );
+    const scaleLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(imgScale, withWebSafeNativeDriver({ toValue: 1.06, duration: 2200, easing: Easing.inOut(Easing.ease) })),
+        Animated.timing(imgScale, withWebSafeNativeDriver({ toValue: 1, duration: 2200, easing: Easing.inOut(Easing.ease) })),
+      ])
+    );
+    floatLoop.start();
+    scaleLoop.start();
+    return () => { floatLoop.stop(); scaleLoop.stop(); };
+  }, [floatY, imgScale]);
+
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.View style={{ transform: [{ translateY: floatY }, { scale: imgScale }] }}>
+        <Image source={{ uri }} style={{ width: size, height: size }} resizeMode="contain" />
+      </Animated.View>
+    </View>
+  );
+}
+
+// ── Home Category Card (same design as ProductScreen filterCard) ───────
+function HomeCategoryCard({
+  cat,
+  index,
+  cardW,
+  darkMode,
+  onPress,
+}: {
+  cat: { id: string; label: string; imageUrl?: string | null };
+  index: number;
+  cardW: number;
+  darkMode: boolean;
+  onPress: () => void;
+}) {
+  const cc = getCatColor(cat.id, index);
+  const pressScale = useRef(new Animated.Value(1)).current;
+  const tiltX = useRef(new Animated.Value(0)).current;
+  const imgUri = getCatImage(cat.id, cat.imageUrl);
+
+  const handlePressIn = () => {
+    Animated.parallel([
+      Animated.spring(pressScale, withWebSafeNativeDriver({ toValue: 0.96, tension: 100, friction: 6 })),
+      Animated.spring(tiltX, withWebSafeNativeDriver({ toValue: 1, tension: 100, friction: 6 })),
+    ]).start();
+  };
+  const handlePressOut = () => {
+    Animated.parallel([
+      Animated.spring(pressScale, withWebSafeNativeDriver({ toValue: 1, tension: 100, friction: 6 })),
+      Animated.spring(tiltX, withWebSafeNativeDriver({ toValue: 0, tension: 100, friction: 6 })),
+    ]).start();
+  };
+  const rotate = tiltX.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '4deg'] });
+
+  return (
+    <Pressable onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut}>
+      <Animated.View
+        style={[
+          homeCatStyles.card,
+          darkMode ? homeCatStyles.cardDark : null,
+          { width: cardW, transform: [{ scale: pressScale }, { perspective: 900 }, { rotateY: rotate }] },
+        ]}
+      >
+        {/* Gradient image zone with floating animated product image */}
+        <LinearGradient
+          colors={darkMode ? ['#1E293B', '#243B55', '#1E293B'] : cc.cardGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={homeCatStyles.imgZone}
+        >
+          <AnimatedCatImage uri={imgUri} size={homeCatStyles.imgZone.height - 10} />
+        </LinearGradient>
+        {/* Label zone */}
+        <View style={[homeCatStyles.infoZone, darkMode ? homeCatStyles.infoZoneDark : null]}>
+          <Text style={[homeCatStyles.label, darkMode ? homeCatStyles.labelDark : null]} numberOfLines={2}>
+            {cat.label}
+          </Text>
+          <View style={[homeCatStyles.pill, { backgroundColor: darkMode ? 'rgba(255,255,255,0.08)' : cc.scanBg }]}>
+            <Text style={[homeCatStyles.pillText, { color: darkMode ? '#94A3B8' : cc.scanText }]}>
+              View Products
+            </Text>
+          </View>
+        </View>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+const homeCatStyles = StyleSheet.create({
+  card: {
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E6ECF5',
+    ...createShadow({ color: '#0F172A', offsetY: 6, blur: 16, opacity: 0.08, elevation: 4 }),
+  },
+  cardDark: { backgroundColor: '#111827', borderColor: '#1E293B' },
+  imgZone: { height: 150, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  iconWrap: { width: 64, height: 64, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  infoZone: { padding: 10, backgroundColor: '#FFFFFF' },
+  infoZoneDark: { backgroundColor: '#111827' },
+  label: { fontSize: 12, fontWeight: '800', color: '#152238', lineHeight: 16, marginBottom: 6 },
+  labelDark: { color: '#F1F5F9' },
+  pill: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  pillText: { fontSize: 10, fontWeight: '700' },
+});
 
 const logoImage = require('../../../../assets/banners/srv-logo.jpeg');
 
@@ -62,91 +361,14 @@ const BANNER_SLIDES = [
   },
 ];
 
-const PRODUCTS = [
-  {
-    name: 'Fan Box 3" Range',
-    description: 'F8 / FC / FDB 18-40 PC',
-    img: 'https://srvelectricals.com/cdn/shop/files/F8_3_18-40.png?v=1757426631&width=300',
-    category: 'fanbox',
-    price: 'Rs 89',
-    points: 10,
-    colors: ['#FFF8EF', '#F2DEC1', '#E7B879'] as const,
-  },
-  {
-    name: 'Concealed Box 3"',
-    description: 'CRD PL precision series',
-    img: 'https://srvelectricals.com/cdn/shop/files/CRD_PL_3.png?v=1757426566&width=300',
-    category: 'concealedbox',
-    price: 'Rs 120',
-    points: 15,
-    colors: ['#F3F8FF', '#D7E5FF', '#94B6EA'] as const,
-  },
-  {
-    name: 'LED Flood Light Sleek',
-    description: 'Outdoor focus beam lighting',
-    img: 'https://srvelectricals.com/cdn/shop/files/FloodLightSleek.png?v=1757426471&width=300',
-    category: 'led',
-    price: 'Rs 699',
-    points: 30,
-    colors: ['#FFFCEE', '#F5E9C5', '#DABB67'] as const,
-  },
-  {
-    name: 'MCB Box GI 4 Way',
-    description: 'Reliable DB box for sites',
-    img: 'https://srvelectricals.com/cdn/shop/files/MCB_Box_4_Way_GI.png?v=1757426418&width=300',
-    category: 'mcb',
-    price: 'Rs 830',
-    points: 40,
-    colors: ['#F9FBFD', '#E2E9F0', '#A7B7C8'] as const,
-  },
-] as const;
-
-const DUMMY_PROFILE = {
-  name: 'Harshvardhan',
-  phone: '9162038214',
-  electrician_code: 'PB03900-001',
-  dealer_code: 'PB-03-900017-001',
-  dealer_name: 'Bansal Chauke',
-  dealer_town: 'Chauke',
-  dealer_phone: '9465258788',
-  town: 'Chauke',
-  district: 'Mansa',
-  state: 'Punjab',
-};
-
-const FEATURED_CARD_COLORS: Record<
-  string,
-  {
-    gradient: readonly [string, string, string];
-    scanBg: string;
-    scanText: string;
-    cardGradient: readonly [string, string, string];
-  }
-> = {
-  fanbox: {
-    gradient: ['#6F879F', '#93A8BE', '#D9E1EA'],
-    scanBg: '#F5F8FB',
-    scanText: '#4A637B',
-    cardGradient: ['#FAFBFD', '#E9EEF5', '#D5DEE9'],
-  },
-  concealedbox: {
-    gradient: ['#6F879F', '#93A8BE', '#D9E1EA'],
-    scanBg: '#F5F8FB',
-    scanText: '#4A637B',
-    cardGradient: ['#FAFBFD', '#E9EEF5', '#D5DEE9'],
-  },
-  led: {
-    gradient: ['#6F879F', '#93A8BE', '#D9E1EA'],
-    scanBg: '#F5F8FB',
-    scanText: '#4A637B',
-    cardGradient: ['#FAFBFD', '#E9EEF5', '#D5DEE9'],
-  },
-  mcb: {
-    gradient: ['#6F879F', '#93A8BE', '#D9E1EA'],
-    scanBg: '#F5F8FB',
-    scanText: '#4A637B',
-    cardGradient: ['#FAFBFD', '#E9EEF5', '#D5DEE9'],
-  },
+type HomeProduct = {
+  id: string;
+  name: string;
+  description: string;
+  img: string;
+  category: string;
+  price: string;
+  points: number;
 };
 function FeaturedProductImage({ uri, size }: { uri: string; size: number }) {
   const floatY = useRef(new Animated.Value(0)).current;
@@ -213,57 +435,40 @@ function FeaturedProductCard({
   onOpenCategory,
   onScan,
 }: {
-  product: (typeof PRODUCTS)[number];
+  product: HomeProduct;
   width: number;
   onOpenCategory: (category: string) => void;
   onScan: () => void;
 }) {
   const { darkMode, tx } = usePreferenceContext();
-  const palette = FEATURED_CARD_COLORS[product.category] ?? FEATURED_CARD_COLORS.fanbox;
+  const palette = getCatColor(product.category);
   const pressScale = useRef(new Animated.Value(1)).current;
   const tilt = useRef(new Animated.Value(0)).current;
   const handlePressIn = () => {
     Animated.parallel([
-      Animated.spring(
-        pressScale,
-        withWebSafeNativeDriver({
-          toValue: 0.965,
-          tension: 110,
-          friction: 7,
-        })
-      ),
+      Animated.spring(pressScale, withWebSafeNativeDriver({ toValue: 0.965, tension: 110, friction: 7 })),
       Animated.spring(tilt, withWebSafeNativeDriver({ toValue: 1, tension: 110, friction: 7 })),
     ]).start();
   };
   const handlePressOut = () => {
     Animated.parallel([
-      Animated.spring(
-        pressScale,
-        withWebSafeNativeDriver({ toValue: 1, tension: 110, friction: 7 })
-      ),
+      Animated.spring(pressScale, withWebSafeNativeDriver({ toValue: 1, tension: 110, friction: 7 })),
       Animated.spring(tilt, withWebSafeNativeDriver({ toValue: 0, tension: 110, friction: 7 })),
     ]).start();
   };
   const rotateY = tilt.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '4deg'] });
   const badgeText = tx(product.points >= 25 ? 'Top Pick' : 'Popular');
   return (
-    <Pressable
-      onPress={() => onOpenCategory(product.category)}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-    >
+    <Pressable onPress={() => onOpenCategory(product.category)} onPressIn={handlePressIn} onPressOut={handlePressOut}>
       <Animated.View
         style={[
           styles.productCard,
           darkMode ? styles.productCardDark : null,
-          {
-            width,
-            transform: [{ scale: pressScale }, { perspective: 900 }, { rotateY }],
-          },
+          { width, transform: [{ scale: pressScale }, { perspective: 900 }, { rotateY }] },
         ]}
       >
         <LinearGradient
-          colors={palette.cardGradient}
+          colors={darkMode ? ['#1E293B', '#243B55', '#1E293B'] : palette.cardGradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.productImageZone}
@@ -276,36 +481,20 @@ function FeaturedProductCard({
           >
             <Text style={styles.productBadgeText}>{badgeText}</Text>
           </LinearGradient>
-          <View
-            style={[
-              styles.pointsPill,
-              styles.pointsPillFloating,
-              { borderColor: palette.scanText + '33' },
-            ]}
-          >
-            <Text style={[styles.pointsPillText, { color: palette.scanText }]}>
-              +{product.points} pts
-            </Text>
+          <View style={[styles.pointsPill, styles.pointsPillFloating, { borderColor: palette.scanText + '33' }]}>
+            <Text style={[styles.pointsPillText, { color: palette.scanText }]}>+{product.points} pts</Text>
           </View>
           <FeaturedProductImage uri={product.img} size={width + 6} />
         </LinearGradient>
         <View style={styles.productInfo}>
-          <Text
-            style={[styles.productName, darkMode ? styles.productNameDark : null]}
-            numberOfLines={1}
-          >
-            {tx(product.name)}
+          <Text style={[styles.productName, darkMode ? styles.productNameDark : null]} numberOfLines={1}>
+            {product.name}
           </Text>
-          <Text
-            style={[styles.productDesc, darkMode ? styles.productDescDark : null]}
-            numberOfLines={2}
-          >
-            {tx(product.description)}
+          <Text style={[styles.productDesc, darkMode ? styles.productDescDark : null]} numberOfLines={2}>
+            {product.description}
           </Text>
           <View style={styles.productFooter}>
-            <Text style={[styles.productPrice, darkMode ? styles.productPriceDark : null]}>
-              {product.price}
-            </Text>
+            <Text style={[styles.productPrice, darkMode ? styles.productPriceDark : null]}>{product.price}</Text>
           </View>
           <TouchableOpacity
             onPress={() => onScan()}
@@ -313,9 +502,7 @@ function FeaturedProductCard({
             activeOpacity={0.85}
           >
             <ScanIcon color={palette.scanText} size={15} />
-            <Text style={[styles.productScanBtnText, { color: palette.scanText }]}>
-              {tx('Scan to Earn')}
-            </Text>
+            <Text style={[styles.productScanBtnText, { color: palette.scanText }]}>{tx('Scan to Earn')}</Text>
           </TouchableOpacity>
         </View>
       </Animated.View>
@@ -437,287 +624,135 @@ export function HomeScreen({
   hasUnreadNotif?: boolean;
 }) {
   const { darkMode, tx, language } = usePreferenceContext();
+  const {
+    products: ctxProducts,
+    categories: ctxCategories,
+    banners: ctxBanners,
+    testimonials: ctxTestimonials,
+    appSettings,
+  } = useAppData();
   const { user: authUser } = useAuth();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [slide, setSlide] = useState(0);
   const productFilters = ['All', 'Boxes', 'Fans'] as const;
   const [selectedFilter, setSelectedFilter] = useState<(typeof productFilters)[number]>('All');
+  const [apiBannerSlides, setApiBannerSlides] = useState<typeof BANNER_SLIDES | null>(null);
+  const [testimonials, setTestimonials] = useState<TestimonialItem[]>([]);
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const statsPulse = useRef(new Animated.Value(1)).current;
   const autoSlideRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cardW = (width - 28 - 12) / 2;
   const heroImageHeight = Math.round((width - 28) * 0.56);
   const tier = useMemo(() => getElectricianTier(totalPoints), [totalPoints]);
+  const catalogProducts = useMemo(
+    () =>
+      ctxProducts.slice(0, 4).map((item) => ({
+        id: item.id,
+        name: item.name,
+        description: item.sub ?? '',
+        img: item.image || CAT_IMAGES[item.category] || CAT_IMAGES.fanbox,
+        category: item.category,
+        price: item.price ? `Rs ${item.price}` : '',
+        points: item.points,
+      })),
+    [ctxProducts],
+  );
 
-  // Real API data
-  const [apiProducts, setApiProducts] = useState<typeof PRODUCTS | null>(null);
-  const [apiBannerSlides, setApiBannerSlides] = useState<typeof BANNER_SLIDES | null>(null);
-  const [loadedBannerUris, setLoadedBannerUris] = useState<Set<string>>(new Set());
+  // Prefer admin-managed category metadata, then backfill from products.
+  const categories = useMemo(() => {
+    const catMap = new Map<string, number>();
+    ctxProducts.forEach((p) => catMap.set(p.category, (catMap.get(p.category) ?? 0) + 1));
+    const CATEGORY_LABELS: Record<string, string> = {
+      fanbox:'Fan Box', concealedbox:'Concealed Box', modular:'Modular Box',
+      modularbox:'Modular Box', mcb:'MCB Box', busbar:'Bus Bar',
+      exhaust:'Exhaust Fan', led:'LED Lights', changeover:'Changeover',
+      mainswitch:'Main Switch', louver:'Louvers', axialfan:'Axial Fan',
+      ledflood:'LED Flood', multipin:'Multi Pin', pintop:'Pin Top', accessories:'Accessories',
+    };
+    const ORDER = ['fanbox','concealedbox','modular','mcb','busbar','exhaust','led','changeover','mainswitch','louver','axialfan','ledflood','multipin','pintop'];
+    const merged = new Map<string, { id: string; label: string; imageUrl?: string | null }>();
 
+    ctxCategories.forEach((category) => {
+      const id = category.categoryId ?? category.slug ?? category.id;
+      merged.set(id, {
+        id,
+        label: category.label || CATEGORY_LABELS[id] || id,
+        imageUrl: category.imageUrl ?? null,
+      });
+    });
+
+    Array.from(catMap.keys()).forEach((id) => {
+      if (!merged.has(id)) {
+        merged.set(id, {
+          id,
+          label: CATEGORY_LABELS[id] ?? id.charAt(0).toUpperCase() + id.slice(1),
+          imageUrl: null,
+        });
+      }
+    });
+
+    return Array.from(merged.values())
+      .sort((a, b) => {
+        const ai = ORDER.indexOf(a.id); const bi = ORDER.indexOf(b.id);
+        if (ai === -1 && bi === -1) return a.id.localeCompare(b.id);
+        if (ai === -1) return 1; if (bi === -1) return -1;
+        return ai - bi;
+      });
+  }, [ctxCategories, ctxProducts]);
+
+  // Map testimonials from context
   useEffect(() => {
-    bannersApi.getAll('electrician').then((res) => {
-      if (res.data?.length) {
-        const mapped = res.data
-          .filter((b: any) => b.isActive !== false && b.status !== 'inactive')
-          .map((b: any) => ({
-            image: b.imageUrl ? { uri: b.imageUrl } : require('../../../../assets/banners/aco.jpg.jpeg'),
-            resizeMode: (b.resizeMode ?? 'cover') as 'cover' | 'contain',
-            backgroundColor: b.bgColor ?? '#192F67',
-          }));
-        if (mapped.length > 0) {
-          // Prefetch all network images first, then swap with fade
-          const uriImages = mapped.filter((b: any) => b.image?.uri).map((b: any) => b.image.uri as string);
-          const doSwap = () => {
-            Animated.timing(fadeAnim, withWebSafeNativeDriver({ toValue: 0, duration: 150 })).start(() => {
-              setSlide(0);
-              setApiBannerSlides(mapped as any);
-              Animated.timing(fadeAnim, withWebSafeNativeDriver({ toValue: 1, duration: 250 })).start();
-            });
-          };
-          if (uriImages.length > 0) {
-            Promise.all(uriImages.map((uri) => Image.prefetch(uri).catch(() => null)))
-              .then(() => {
-                setLoadedBannerUris(new Set(uriImages));
-                doSwap();
-              });
-          } else {
-            doSwap();
-          }
-        }
-      }
-    }).catch(() => {});
+    if (ctxTestimonials.length > 0) {
+      setTestimonials(ctxTestimonials.map((t) => ({
+        initials: t.initials ?? t.personName.slice(0, 2).toUpperCase(),
+        name: t.personName,
+        location: t.location ?? '',
+        tier: t.tier ?? '',
+        yearsWithUs: `Connected for ${t.yearsConnected} year${t.yearsConnected !== 1 ? 's' : ''}`,
+        quote: t.quote,
+        highlight: t.highlight ?? '',
+        colors: (t.gradientColors?.slice(0, 3) ?? ['#EEF2FF','#D9D6FE','#C4B5FD']) as [string,string,string],
+        ring: t.ringColor ?? '#7C3AED',
+        glow: t.gradientColors?.[0] ?? '#DDD6FE',
+      })));
+    }
+  }, [ctxTestimonials]);
 
-    productsApi.getAll().then((res) => {
-      if (res.data?.length) {
-        const mapped = res.data.slice(0, 4).map((p: any) => ({
-          name: p.name,
-          description: p.sub ?? p.description ?? '',
-          img: p.image ?? '',
-          category: p.category ?? 'fanbox',
-          price: `Rs ${p.price ?? 0}`,
-          points: p.points ?? 0,
-          colors: ['#FFF8EF', '#F2DEC1', '#E7B879'] as const,
-        }));
-        setApiProducts(mapped as any);
-      }
-    }).catch(() => {});
-  }, []);
-
-  const activeProducts = apiProducts ?? PRODUCTS;
-  const activeBannerSlides = apiBannerSlides ?? BANNER_SLIDES;
+  // Map banners from context
+  useEffect(() => {
+    const filtered = ctxBanners.filter((b) => b.isActive !== false);
+    if (filtered.length > 0) {
+      const mapped = filtered.map((b) => ({
+        image: b.imageUrl ? { uri: b.imageUrl } : require('../../../../assets/banners/aco.jpg.jpeg'),
+        resizeMode: ((b.resizeMode ?? 'cover') as 'cover' | 'contain'),
+        backgroundColor: b.bgColor ?? '#192F67',
+      }));
+      setApiBannerSlides(mapped as any);
+    }
+  }, [ctxBanners]);
 
   const filteredProducts = useMemo(() => {
     if (selectedFilter === 'Boxes') {
-      return activeProducts.filter((product: any) => {
+      return catalogProducts.filter((product) => {
         const source = `${product.name} ${product.description}`.toLowerCase();
         return source.includes('box');
       });
     }
     if (selectedFilter === 'Fans') {
-      return activeProducts.filter((product: any) => {
+      return catalogProducts.filter((product) => {
         const source = `${product.name} ${product.description}`.toLowerCase();
         return source.includes('fan');
       });
     }
-    return activeProducts;
-  }, [selectedFilter, activeProducts]);
-  const electricianTestimonials = useMemo<TestimonialItem[]>(() => {
-    if (language === 'Hindi') {
-      return [
-        {
-          initials: 'GS',
-          name: 'Gurpreet Singh',
-          location: tx('Amritsar'),
-          tier: tx('Diamond'),
-          yearsWithUs: tx('4 years connected'),
-          quote: tx('T1 quote'),
-          highlight: tx('Reliable performance on real job sites'),
-          colors: ['#EEF2FF', '#D9D6FE', '#C4B5FD'],
-          ring: '#7C3AED',
-          glow: '#DDD6FE',
-        },
-        {
-          initials: 'AV',
-          name: 'Amit Verma',
-          location: tx('Panchkula'),
-          tier: tx('Platinum'),
-          yearsWithUs: tx('3 years connected'),
-          quote: tx('T2 quote'),
-          highlight: tx('Fast scan flow with clear rewards'),
-          colors: ['#ECFEFF', '#CFFAFE', '#A5F3FC'],
-          ring: '#0F766E',
-          glow: '#CCFBF1',
-        },
-        {
-          initials: 'HK',
-          name: 'Harpal Kaur',
-          location: tx('Jalandhar'),
-          tier: tx('Platinum'),
-          yearsWithUs: tx('2 years connected'),
-          quote: tx('T3 quote'),
-          highlight: tx('Built for day-to-day field work'),
-          colors: ['#F7FEE7', '#DCFCE7', '#BEF264'],
-          ring: '#65A30D',
-          glow: '#ECFCCB',
-        },
-        {
-          initials: 'RS',
-          name: 'Ravi Sharma',
-          location: tx('Mohali'),
-          tier: tx('Gold'),
-          yearsWithUs: tx('3 years connected'),
-          quote: tx('T4 quote'),
-          highlight: tx('Transparent rewards and timely payments'),
-          colors: ['#FFF7E6', '#FDE6B4', '#F6C96E'],
-          ring: '#D97706',
-          glow: '#FFE7BA',
-        },
-        {
-          initials: 'NK',
-          name: 'Naveen Kumar',
-          location: tx('Ludhiana'),
-          tier: tx('Silver'),
-          yearsWithUs: tx('1 year connected'),
-          quote: tx('T5 quote'),
-          highlight: tx('Good start and easy learning curve'),
-          colors: ['#FFF1EC', '#FFD8CC', '#F6B9A4'],
-          ring: '#C2410C',
-          glow: '#FFD8CC',
-        },
-      ];
-    }
-    if (language === 'Punjabi') {
-      return [
-        {
-          initials: 'GS',
-          name: 'Gurpreet Singh',
-          location: tx('Amritsar'),
-          tier: tx('Diamond'),
-          yearsWithUs: tx('4 years connected'),
-          quote: tx('T1 quote'),
-          highlight: tx('Reliable performance on real job sites'),
-          colors: ['#EEF2FF', '#D9D6FE', '#C4B5FD'],
-          ring: '#7C3AED',
-          glow: '#DDD6FE',
-        },
-        {
-          initials: 'AV',
-          name: 'Amit Verma',
-          location: tx('Panchkula'),
-          tier: tx('Platinum'),
-          yearsWithUs: tx('3 years connected'),
-          quote: tx('T2 quote'),
-          highlight: tx('Fast scan flow with clear rewards'),
-          colors: ['#ECFEFF', '#CFFAFE', '#A5F3FC'],
-          ring: '#0F766E',
-          glow: '#CCFBF1',
-        },
-        {
-          initials: 'HK',
-          name: 'Harpal Kaur',
-          location: tx('Jalandhar'),
-          tier: tx('Platinum'),
-          yearsWithUs: tx('2 years connected'),
-          quote: tx('T3 quote'),
-          highlight: tx('Built for day-to-day field work'),
-          colors: ['#F7FEE7', '#DCFCE7', '#BEF264'],
-          ring: '#65A30D',
-          glow: '#ECFCCB',
-        },
-        {
-          initials: 'RS',
-          name: 'Ravi Sharma',
-          location: tx('Mohali'),
-          tier: tx('Gold'),
-          yearsWithUs: tx('3 years connected'),
-          quote: tx('T4 quote'),
-          highlight: tx('Transparent rewards and timely payments'),
-          colors: ['#FFF7E6', '#FDE6B4', '#F6C96E'],
-          ring: '#D97706',
-          glow: '#FFE7BA',
-        },
-        {
-          initials: 'NK',
-          name: 'Naveen Kumar',
-          location: tx('Ludhiana'),
-          tier: tx('Silver'),
-          yearsWithUs: tx('1 year connected'),
-          quote: tx('T5 quote'),
-          highlight: tx('Good start and easy learning curve'),
-          colors: ['#FFF1EC', '#FFD8CC', '#F6B9A4'],
-          ring: '#C2410C',
-          glow: '#FFD8CC',
-        },
-      ];
-    }
-    return [
-      {
-        initials: 'GS',
-        name: 'Gurpreet Singh',
-        location: 'Amritsar',
-        tier: 'Diamond',
-        yearsWithUs: 'Connected for 4 years',
-        quote:
-          'Whether it is a big installation or a quick site visit, SRV feels dependable both in product quality and app flow.',
-        highlight: 'Reliable performance on real job sites',
-        colors: ['#EEF2FF', '#D9D6FE', '#C4B5FD'],
-        ring: '#7C3AED',
-        glow: '#DDD6FE',
-      },
-      {
-        initials: 'AV',
-        name: 'Amit Verma',
-        location: 'Panchkula',
-        tier: 'Platinum',
-        yearsWithUs: 'Connected for 3 years',
-        quote:
-          'Points get added fast after scanning, and reward tracking is much cleaner than before.',
-        highlight: 'Fast scan flow with clear rewards',
-        colors: ['#ECFEFF', '#CFFAFE', '#A5F3FC'],
-        ring: '#0F766E',
-        glow: '#CCFBF1',
-      },
-      {
-        initials: 'HK',
-        name: 'Harpal Kaur',
-        location: 'Jalandhar',
-        tier: 'Platinum',
-        yearsWithUs: 'Connected for 2 years',
-        quote:
-          'Dealer support feels available whenever needed, and the whole experience stays smooth while working in the field.',
-        highlight: 'Built for day-to-day field work',
-        colors: ['#F7FEE7', '#DCFCE7', '#BEF264'],
-        ring: '#65A30D',
-        glow: '#ECFCCB',
-      },
-      {
-        initials: 'RS',
-        name: 'Ravi Sharma',
-        location: 'Mohali',
-        tier: 'Gold',
-        yearsWithUs: 'Connected for 3 years',
-        quote: 'Rewards come on time and the points calculation is completely transparent.',
-        highlight: 'Transparent rewards and timely payments',
-        colors: ['#FFF7E6', '#FDE6B4', '#F6C96E'],
-        ring: '#D97706',
-        glow: '#FFE7BA',
-      },
-      {
-        initials: 'NK',
-        name: 'Naveen Kumar',
-        location: 'Ludhiana',
-        tier: 'Silver',
-        yearsWithUs: 'Connected for 1 year',
-        quote: 'Even though I am new, I got great support. The app is easy to learn and use.',
-        highlight: 'Good start and easy learning curve',
-        colors: ['#FFF1EC', '#FFD8CC', '#F6B9A4'],
-        ring: '#C2410C',
-        glow: '#FFD8CC',
-      },
-    ];
-  }, [language, tx]);
+    return catalogProducts;
+  }, [catalogProducts, selectedFilter]);
 
+  // Show only first 6 categories on home screen
+  const displayedCategories = useMemo(() => categories.slice(0, 6), [categories]);
+
+  // 2-column card width (same as ProductScreen)
+  const catCardW = Math.floor((width - 28 - 12) / 2);
   const goToSlide = (next: number) => {
     Animated.sequence([
       Animated.timing(fadeAnim, withWebSafeNativeDriver({ toValue: 0.45, duration: 140 })),
@@ -729,8 +764,10 @@ export function HomeScreen({
     if (autoSlideRef.current) {
       clearInterval(autoSlideRef.current);
     }
+    const slides = apiBannerSlides ?? BANNER_SLIDES;
+    if (slides.length < 2) return;
     autoSlideRef.current = setInterval(() => {
-      setSlide((prev) => (prev + 1) % activeBannerSlides.length);
+      setSlide((prev) => (prev + 1) % slides.length);
     }, 4200);
   };
 
@@ -741,7 +778,7 @@ export function HomeScreen({
         clearInterval(autoSlideRef.current);
       }
     };
-  }, [activeBannerSlides.length]);
+  }, []);
 
   useEffect(() => {
     const pulse = Animated.loop(
@@ -763,14 +800,16 @@ export function HomeScreen({
       onPanResponderRelease: (_, gs) => {
         if (gs.dx < -40) {
           setSlide((prev) => {
-            const next = (prev + 1) % activeBannerSlides.length;
+            const slides = apiBannerSlides ?? BANNER_SLIDES;
+            const next = (prev + 1) % slides.length;
             goToSlide(next);
             return next;
           });
           resetAutoSlide();
         } else if (gs.dx > 40) {
           setSlide((prev) => {
-            const next = (prev - 1 + activeBannerSlides.length) % activeBannerSlides.length;
+            const slides = apiBannerSlides ?? BANNER_SLIDES;
+            const next = (prev - 1 + slides.length) % slides.length;
             goToSlide(next);
             return next;
           });
@@ -820,10 +859,8 @@ export function HomeScreen({
       iconColors: ['#DCFCE7', '#BBF7D0'] as const,
       iconTint: '#16A34A',
       onPress: () =>
-        Linking.openURL(
-          'https://wa.me/918837684004?text=Hello%20SRV%20Electricals%2C%20I%20need%20support'
-        ),
-    },
+          Linking.openURL(`https://wa.me/${appSettings?.whatsappNumber ?? '918837684004'}?text=Hello%20SRV%20Electricals%2C%20I%20need%20support`),
+      },
   ];
 
   return (
@@ -849,39 +886,41 @@ export function HomeScreen({
           </View>
 
           <View style={styles.topActions}>
-              <TouchableOpacity
-                onPress={() => onNavigate('notification')}
-                style={[styles.topActionBtn, darkMode ? styles.topActionBtnDark : null]}
-                activeOpacity={0.85}
+            <TouchableOpacity
+              onPress={() => onNavigate('notification')}
+              style={[styles.topActionBtn, darkMode ? styles.topActionBtnDark : null]}
+              activeOpacity={0.85}
+            >
+              <View
+                style={[
+                  styles.topIconCore,
+                  styles.notificationCore,
+                  darkMode ? styles.notificationCoreDark : null,
+                ]}
               >
-                <View
-                  style={[
-                    styles.topIconCore,
-                    styles.notificationCore,
-                    darkMode ? styles.notificationCoreDark : null,
-                  ]}
-                >
-                  <BellIcon color={darkMode ? '#FDBA74' : '#C2410C'} />
-                  {hasUnreadNotif && (
-                    <View style={styles.redDot} />
-                  )}
-                </View>
-              </TouchableOpacity>
-            </View>
+                <BellIcon color={darkMode ? '#FDBA74' : '#C2410C'} />
+              </View>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <ProfileFlipCard profile={{
-          name: authUser?.name ?? DUMMY_PROFILE.name,
-          phone: authUser?.phone ?? DUMMY_PROFILE.phone,
-          electrician_code: authUser?.electricianCode ?? DUMMY_PROFILE.electrician_code,
-          dealer_code: authUser?.dealerCode ?? DUMMY_PROFILE.dealer_code,
-          dealer_name: authUser?.dealerName ?? DUMMY_PROFILE.dealer_name,
-          dealer_town: authUser?.dealerTown ?? DUMMY_PROFILE.dealer_town,
-          dealer_phone: authUser?.dealerPhone ?? DUMMY_PROFILE.dealer_phone,
-          town: authUser?.city ?? DUMMY_PROFILE.town,
-          district: authUser?.district ?? DUMMY_PROFILE.district,
-          state: authUser?.state ?? DUMMY_PROFILE.state,
-        }} role="electrician" photoUri={profilePhotoUri} apiPhotoUri={authUser?.profileImage ?? null} />
+        <ProfileFlipCard
+          profile={{
+            name: authUser?.name ?? '',
+            phone: authUser?.phone ?? '',
+            electrician_code: authUser?.electricianCode ?? '',
+            dealer_code: authUser?.dealerCode ?? '',
+            dealer_name: authUser?.dealerName ?? '',
+            dealer_town: authUser?.dealerTown ?? '',
+            dealer_phone: authUser?.dealerPhone ?? '',
+            town: authUser?.city ?? '',
+            state: authUser?.state ?? '',
+            address: authUser?.address ?? '',
+          }}
+          role="electrician"
+          photoUri={profilePhotoUri}
+          apiPhotoUri={authUser?.profileImage ?? null}
+        />
 
         <View style={styles.statRow}>
           <Animated.View
@@ -983,34 +1022,19 @@ export function HomeScreen({
 
       <View style={styles.body}>
         <Animated.View style={{ opacity: fadeAnim }} {...panResponder.panHandlers}>
-          <View
-            style={[
-              styles.bannerCard,
-              { height: heroImageHeight, backgroundColor: activeBannerSlides[slide]?.backgroundColor ?? '#192F67' },
-            ]}
-          >
-            <Image
-              source={activeBannerSlides[slide]?.image}
-              style={styles.bannerImage}
-              resizeMode={activeBannerSlides[slide]?.resizeMode ?? 'cover'}
-              onLoad={() => {
-                const uri = (activeBannerSlides[slide]?.image as any)?.uri;
-                if (uri) setLoadedBannerUris(prev => new Set([...prev, uri]));
-              }}
-            />
-            {/* Hide background flash while network image loads */}
-            {(() => {
-              const uri = (activeBannerSlides[slide]?.image as any)?.uri;
-              const isLoaded = !uri || loadedBannerUris.has(uri);
-              return !isLoaded ? (
-                <View style={[styles.bannerImage, { position: 'absolute', backgroundColor: '#f0f0f0' }]} />
-              ) : null;
-            })()}
-          </View>
+          {(() => {
+            const slides = apiBannerSlides ?? BANNER_SLIDES;
+            const s = slide % slides.length;
+            return (
+              <View style={[styles.bannerCard, { height: heroImageHeight, backgroundColor: slides[s].backgroundColor }]}>
+                <Image source={slides[s].image} style={styles.bannerImage} resizeMode={slides[s].resizeMode} />
+              </View>
+            );
+          })()}
         </Animated.View>
 
         <View style={styles.dotsRow}>
-          {activeBannerSlides.map((_, index) => (
+          {(apiBannerSlides ?? BANNER_SLIDES).map((_, index) => (
             <TouchableOpacity
               key={index}
               onPress={() => {
@@ -1059,79 +1083,46 @@ export function HomeScreen({
           })}
         </View>
 
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={[styles.sectionEyebrow, darkMode ? styles.sectionEyebrowDark : null]}>
-              {tx('Top Picks')}
-            </Text>
-            <Text style={[styles.sectionTitle, darkMode ? styles.sectionTitleDark : null]}>
-              {tx('Featured products')}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.productsTopBar}>
-          <View style={styles.filterRow}>
-            {productFilters.map((filter) => {
-              const active = selectedFilter === filter;
-              return (
-                <TouchableOpacity
-                  key={filter}
-                  onPress={() => setSelectedFilter(filter)}
-                  style={[
-                    styles.filterChip,
-                    darkMode ? styles.filterChipDark : null,
-                    active && styles.filterChipActive,
-                  ]}
-                  activeOpacity={0.86}
-                >
-                  {filter === 'All' ? (
-                    <FilterIcon
-                      color={active ? '#FFFFFF' : darkMode ? '#CBD5E1' : '#173E80'}
-                      size={15}
-                    />
-                  ) : null}
-                  <Text
-                    style={[
-                      styles.filterChipText,
-                      darkMode ? styles.filterChipTextDark : null,
-                      active && styles.filterChipTextActive,
-                    ]}
-                  >
-                    {tx(filter)}
-                  </Text>
+        {/* Browse by Category */}
+        {categories.length > 0 && (
+          <>
+            <View style={styles.sectionHeader}>
+              <View>
+                <Text style={[styles.sectionEyebrow, darkMode ? styles.sectionEyebrowDark : null]}>
+                  {tx('Shop by Category')}
+                </Text>
+                <Text style={[styles.sectionTitle, darkMode ? styles.sectionTitleDark : null]}>
+                  {tx('Browse Categories')}
+                </Text>
+              </View>
+              {categories.length > 6 && (
+                <TouchableOpacity onPress={() => onNavigate('product')} style={styles.inlineAction} activeOpacity={0.85}>
+                  <Text style={styles.viewAllText}>{tx('View all')}</Text>
+                  <ChevronRight color="#E8453C" />
                 </TouchableOpacity>
-              );
-            })}
-          </View>
+              )}
+            </View>
 
-          <TouchableOpacity
-            onPress={() => onNavigate('product')}
-            style={styles.inlineAction}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.viewAllText}>{tx('View all')}</Text>
-            <ChevronRight color="#E8453C" />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.productsGrid}>
-          {filteredProducts.map((product) => (
-            <FeaturedProductCard
-              key={product.name}
-              product={product}
-              width={cardW}
-              onOpenCategory={onOpenProductCategory}
-              onScan={() => onNavigate('scan')}
-            />
-          ))}
-        </View>
+            <View style={styles.homeCatGrid}>
+              {displayedCategories.map((cat, index) => (
+                <HomeCategoryCard
+                  key={cat.id}
+                  cat={cat}
+                  index={index}
+                  cardW={catCardW}
+                  darkMode={darkMode}
+                  onPress={() => onOpenProductCategory(cat.id)}
+                />
+              ))}
+            </View>
+          </>
+        )}
 
         <TestimonialShowcase
           eyebrow={tx('Electrician Testimonials')}
           title={tx('What Electricians Say')}
           subtitle={tx('Testimonial subtitle')}
-          items={electricianTestimonials}
+          items={testimonials}
           darkMode={darkMode}
         />
 
@@ -1238,17 +1229,6 @@ const styles = StyleSheet.create({
   },
   notificationCoreDark: {
     backgroundColor: 'rgba(194,65,12,0.18)',
-  },
-  redDot: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#E8453C',
-    borderWidth: 1.5,
-    borderColor: '#FFFFFF',
   },
   statRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
   statCardWrap: {
@@ -1472,4 +1452,68 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
   },
   productScanBtnText: { fontSize: 11.5, fontWeight: '800' },
+  // Category grid — 2-column, same as ProductScreen
+  homeCatGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 24,
+  },
+  // Legacy category grid (kept for reference)
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 24,
+  },
+  categoryCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    overflow: 'hidden',
+    alignItems: 'center',
+    width: '22%',
+    minWidth: 80,
+    borderWidth: 1,
+    borderColor: '#E6ECF5',
+    paddingBottom: 10,
+    ...createShadow({ color: '#0F172A', offsetY: 4, blur: 12, opacity: 0.07, elevation: 3 }),
+  },
+  categoryCardDark: {
+    backgroundColor: '#111827',
+    borderColor: '#1E293B',
+  },
+  categoryImgWrap: {
+    width: '100%',
+    height: 76,
+    backgroundColor: '#F4F7FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  categoryImgWrapDark: {
+    backgroundColor: '#1E293B',
+  },
+  categoryImg: {
+    width: '86%',
+    height: 62,
+  },
+  categoryLabel: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: '#152238',
+    textAlign: 'center',
+    lineHeight: 13,
+    paddingHorizontal: 4,
+  },
+  categoryLabelDark: { color: '#E2E8F0' },
+  categoryPrice: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#E8453C',
+    textAlign: 'center',
+    marginTop: 3,
+    paddingHorizontal: 4,
+  },
+  categoryPriceDark: { color: '#F87171' },
+  notifDot: { position: 'absolute', top: 6, right: 6, width: 8, height: 8, borderRadius: 4, backgroundColor: '#E8453C', borderWidth: 1.5, borderColor: '#fff' },
 });

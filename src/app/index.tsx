@@ -29,7 +29,7 @@ import { colors } from '@/shared/theme/colors';
 import type { Screen, UserRole } from '@/shared/types/navigation';
 import type { RewardHistoryItem } from '@/shared/types/rewards';
 import { GetStartedScreen } from '@/features/onboarding/GetStartedScreen';
-import { AuthProvider, useAuth } from '@/shared/context/AuthContext';
+import { useAuth } from '@/shared/context/AuthContext';
 import { storage } from '@/shared/api';
 
 type OnboardingStartOptions = {
@@ -38,15 +38,11 @@ type OnboardingStartOptions = {
 };
 
 export default function Index() {
-  return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
-  );
+  return <AppContent />;
 }
 
 function AppContent() {
-  const { isAuthenticated, isLoading: authLoading, user, role: authRole, login } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, user, role: authRole, login, logout } = useAuth();
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [screenResetKey, setScreenResetKey] = useState(0);
   const [showOnboarding, setShowOnboarding] = useState(true);
@@ -106,18 +102,16 @@ function AppContent() {
       if (user.totalScans !== undefined) {
         setElectricianRewardScans(user.totalScans);
       }
-      // Sync profile photo from API (admin can set it)
-      if (user.profileImage) {
-        const role = authRole as UserRole;
-        if (role) {
-          setProfilePhotoByRole((current) => {
-            // Only update if no local photo has been set, or if API photo changed
-            if (!current[role] || current[role] !== user.profileImage) {
-              return { ...current, [role]: user.profileImage! };
-            }
-            return current;
-          });
-        }
+      // Sync profile photo from API — always use server value as source of truth
+      const role = authRole as UserRole;
+      if (role) {
+        setProfilePhotoByRole((current) => {
+          const serverPhoto = user.profileImage ?? null;
+          if (current[role] !== serverPhoto) {
+            return { ...current, [role]: serverPhoto };
+          }
+          return current;
+        });
       }
     }
   }, [user?.totalPoints, user?.totalScans, user?.profileImage, authRole]);
@@ -166,13 +160,18 @@ function AppContent() {
 
   const handleSignOut = useCallback(() => {
     void (async () => {
-      await storage.clearAll();
+      await logout(); // clears storage + resets AuthContext state
       setShowOnboarding(true);
+      setShowGetStarted(false);
       setCurrentRole('electrician');
       setCurrentScreen('home');
       setSelectedProductCategory('fanbox');
+      setElectricianRewardPoints(0);
+      setElectricianRewardScans(0);
+      setElectricianRewardHistory([]);
+      setHasUnreadNotif(false);
     })();
-  }, []);
+  }, [logout]);
 
   const handleNotificationsSeen = useCallback(() => {
     setHasUnreadNotif(false);

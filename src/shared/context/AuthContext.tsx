@@ -84,12 +84,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         void refreshProfile();
       }
     });
-    // Also poll every 15s while app is active for real-time admin changes
+    // Poll aggressively while active so admin updates show up quickly in the app.
     const interval = setInterval(() => {
       if (AppState.currentState === 'active') {
         void refreshProfile();
       }
-    }, 15000);
+    }, 5000);
     return () => {
       sub.remove();
       clearInterval(interval);

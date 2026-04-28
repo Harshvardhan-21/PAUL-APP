@@ -174,34 +174,9 @@ export const editRows: ProfileEditRow[] = [
   { label: 'Address', key: 'address' },
 ];
 
-export const getProfileByRole = (currentRole: UserRole): Profile =>
-  currentRole === 'dealer'
-    ? {
-        ...defaultProfile,
-        name: 'Pawan Electricals',
-        phone: '9876543210',
-        email: 'sales@pawanelectricals.com',
-        state: 'Punjab',
-        city: 'Mansa',
-        pincode: '151505',
-        address: 'Shop No. 18, Power Market, Near Bus Stand, Mansa, Punjab 151505',
-        gstHolderName: 'Pawan Kumar',
-        gstNumber: '03ABCDE1234F1Z5',
-        panHolderName: 'Pawan Kumar',
-        panNumber: 'ABCDE1234F',
-        dealerCode: 'PB-05-800206-001',
-      }
-    : {
-        ...defaultProfile,
-        name: 'Harshvardhan',
-        phone: '9162038214',
-        electricianCode: 'PB03900-001',
-        dealerCode: 'PB-03-900017-001',
-        gstHolderName: '',
-        gstNumber: '',
-        panHolderName: '',
-        panNumber: '',
-      };
+export const getProfileByRole = (_currentRole: UserRole): Profile => ({
+  ...defaultProfile,
+});
 
 export const getTaxIdentityValue = (profile: Profile) =>
   profile.gstNumber || profile.panNumber || '';
@@ -240,3 +215,5 @@ export const getDealerMembership = (electricianCount: number): DealerMembership 
     soft: '#CFFAFE',
   };
 };
+
+

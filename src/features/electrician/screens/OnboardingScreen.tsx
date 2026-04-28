@@ -24,7 +24,6 @@ import { withWebSafeNativeDriver } from '@/shared/animations/nativeDriver';
 import { usePreferenceContext } from '@/shared/preferences';
 import { clearShadow, createShadow } from '@/shared/theme/shadows';
 import { authApi, dealerApi } from '@/shared/api';
-import { API_BASE_URL } from '@/shared/api/config';
 
 export type UserRole = 'electrician' | 'dealer';
 type IntroStep = 'language' | 'role' | 'auth';
@@ -700,7 +699,7 @@ export function OnboardingScreen({
     role: UserRole,
     options?: { passwordConfigured?: boolean; passwordValue?: string }
   ) => void;
-}): JSX.Element {
+}): React.ReactElement {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const { language, setLanguage, tx } = usePreferenceContext();
@@ -1254,7 +1253,7 @@ export function OnboardingScreen({
   const dealerSignupContent =
     role === 'dealer' ? (dealerSignupMeta[signupStep] ?? dealerSignupMeta.name) : null;
 
-  const submitAuth = () => {
+  const submitAuth = async () => {
     dismissKeyboard();
     if (mode === 'login') {
       if (role === 'electrician') {
@@ -1306,8 +1305,10 @@ export function OnboardingScreen({
     setError('signupConfirmPass');
     setLoading(true);
 
-    const finishLogin = () => {
-      setLoading(false);
+    const finishLogin = (resolvedUser?: unknown) => {
+      if (resolvedUser) {
+        (globalThis as any).__srvLoginUser = resolvedUser;
+      }
       const passwordConfigured =
         mode === 'signup'
           ? signupPass.length >= 8
@@ -1330,8 +1331,73 @@ export function OnboardingScreen({
       );
     };
 
-    // For OTP login — token already saved in verifyLoginOtp, just proceed
-    finishLogin();
+    try {
+      if (mode === 'login') {
+        if (
+          (role === 'electrician' && electricianLoginMethod === 'password') ||
+          (role === 'dealer' && dealerLoginMethod === 'password')
+        ) {
+          const res = await authApi.loginWithPassword(loginPhone, role, loginPass);
+          finishLogin(res.user);
+          return;
+        }
+
+        // OTP login: token/user already saved during OTP verification.
+        finishLogin((globalThis as any).__srvLoginUser);
+        return;
+      }
+
+      if (role === 'dealer') {
+        const res = await authApi.registerDealer({
+          name: signupName.trim(),
+          phone: signupPhone,
+          email: signupEmail.trim() || undefined,
+          town: signupCity.trim(),
+          district: signupCity.trim(),
+          state: signupState.trim(),
+          address: signupAddress.trim(),
+          pincode: signupPincode.trim() || undefined,
+          gstNumber: signupGstNumber.trim() || undefined,
+          password: signupPass.trim() || undefined,
+        });
+        finishLogin(res.user);
+        return;
+      }
+
+      const res = await authApi.registerElectrician({
+        name: signupName.trim(),
+        phone: signupPhone,
+        email: signupEmail.trim() || undefined,
+        city: signupCity.trim(),
+        district: signupCity.trim(),
+        state: signupState.trim(),
+        address: signupAddress.trim() || undefined,
+        pincode: signupPincode.trim() || undefined,
+        dealerPhone: signupDealerPhone,
+        password: signupPass.trim() || undefined,
+      });
+      finishLogin(res.user);
+    } catch (err: any) {
+      const message = err?.message || tx('Something went wrong. Please try again.');
+      if (mode === 'login') {
+        if (
+          (role === 'electrician' && electricianLoginMethod === 'password') ||
+          (role === 'dealer' && dealerLoginMethod === 'password')
+        ) {
+          setError('loginPass', message);
+        } else {
+          setError('loginOtp', message);
+        }
+      } else if (message.toLowerCase().includes('otp')) {
+        setError('signupOtp', message);
+      } else if (message.toLowerCase().includes('dealer')) {
+        setError('signupDealerPhone', message);
+      } else {
+        setError('signupPhone', message);
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const continueLoginPhone = () => {
@@ -1352,16 +1418,8 @@ export function OnboardingScreen({
           }
         })
         .catch((err: Error) => {
-          // Even on error, allow OTP entry in dev mode
           const msg = err.message || '';
-          if (msg.includes('not registered') || msg.includes('not found')) {
-            setError('loginPhone', msg);
-          } else {
-            // Network error — still show OTP field with dev hint
-            setLoginOtpCountdown(50);
-            setLoginStep('otp');
-            setError('loginPhone', 'Dev mode: use OTP 1234');
-          }
+          setError('loginPhone', msg || 'Could not send OTP. Please try again.');
         })
         .finally(() => setLoading(false));
     };
@@ -1406,13 +1464,7 @@ export function OnboardingScreen({
         (globalThis as any).__srvLoginUser = res.user;
       })
       .catch((err: Error) => {
-        const msg = err.message || '';
-        // Network error — dev mode fallback: accept 1234
-        if (!msg.includes('Invalid OTP') && !msg.includes('expired') && loginOtp === '1234') {
-          setLoginOtpVerified(true);
-        } else {
-          setError('loginOtp', msg || 'Invalid OTP. Please try again.');
-        }
+        setError('loginOtp', err.message || 'Invalid OTP. Please try again.');
       })
       .finally(() => setLoading(false));
   };
@@ -1448,24 +1500,19 @@ export function OnboardingScreen({
     setError('signupOtp');
     setSignupOtp('');
     setSignupOtpVerified(false);
-    // For signup, we send OTP — backend will create user on verifyOtp
     setLoading(true);
-    fetch(`${API_BASE_URL}/mobile/auth/send-otp`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: signupPhone, role }),
-    })
-      .then((r) => r.json())
-      .then(() => {
+    authApi
+      .sendSignupOtp(signupPhone, role)
+      .then((res) => {
         setSignupOtpSent(true);
         setSignupOtpCountdown(50);
+        if (res.devOtp) {
+          setError('signupPhone', `Dev OTP: ${res.devOtp}`);
+        }
         if (role === 'electrician') setSignupStep('otp');
       })
-      .catch(() => {
-        // Even if user not found, allow OTP flow for signup
-        setSignupOtpSent(true);
-        setSignupOtpCountdown(50);
-        if (role === 'electrician') setSignupStep('otp');
+      .catch((err: Error) => {
+        setError('signupPhone', err.message || 'Could not send OTP. Please try again.');
       })
       .finally(() => setLoading(false));
   };
@@ -1476,13 +1523,17 @@ export function OnboardingScreen({
     if (signupOtp.length !== 4)
       return setError('signupOtp', 'Enter the 4-digit OTP to verify your number.');
     setError('signupOtp');
-    // For signup, OTP is 1234 in dev — just mark verified
-    if (signupOtp === '1234' || signupOtp.length === 4) {
-      setSignupOtpVerified(true);
-      setSignupStep(role === 'electrician' ? 'address' : 'password');
-    } else {
-      setError('signupOtp', 'Invalid OTP. Please try again.');
-    }
+    setLoading(true);
+    authApi
+      .verifySignupOtp(signupPhone, role, signupOtp)
+      .then(() => {
+        setSignupOtpVerified(true);
+        setSignupStep(role === 'electrician' ? 'address' : 'password');
+      })
+      .catch((err: Error) => {
+        setError('signupOtp', err.message || 'Invalid OTP. Please try again.');
+      })
+      .finally(() => setLoading(false));
   };
 
   const continueSignup = () => {

@@ -1,28 +1,70 @@
-import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AppIcon, C, PageHeader } from '../components/ProfileShared';
 import { usePreferenceContext } from '@/shared/preferences';
+import { ordersApi, type UserOrder } from '@/shared/api';
 
-const orders = [
-  {
-    id: 'ORD-1001',
-    title: 'MCB Box Premium',
-    date: '02 Apr 2026',
-    status: 'Delivered',
-    qty: '2 Units',
-  },
-  {
-    id: 'ORD-1002',
-    title: 'Junction Box Set',
-    date: '28 Mar 2026',
-    status: 'In Transit',
-    qty: '5 Units',
-  },
-  { id: 'ORD-1003', title: 'Fan Box 3"', date: '24 Mar 2026', status: 'Packed', qty: '8 Units' },
-];
+function formatDate(value?: string | null) {
+  if (!value) {
+    return 'Recent';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'Recent';
+  }
+
+  return date.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function toStatusLabel(status?: string) {
+  const normalized = String(status ?? '').trim().toLowerCase();
+  if (!normalized) return 'Pending';
+  return normalized
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function isClosedStatus(status?: string) {
+  const normalized = String(status ?? '').trim().toLowerCase();
+  return ['approved', 'completed', 'delivered', 'rejected', 'cancelled'].includes(normalized);
+}
 
 export function MyOrdersPage({ onBack }: { onBack: () => void }) {
   const { t, tx, theme } = usePreferenceContext();
+  const [orders, setOrders] = useState<UserOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    ordersApi
+      .getAll()
+      .then((data) => setOrders(Array.isArray(data) ? data : []))
+      .catch(() => setOrders([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const activeOrders = useMemo(
+    () => orders.filter((order) => !isClosedStatus(order.status)),
+    [orders]
+  );
+
+  const lastDeliveredOrder = useMemo(() => {
+    const delivered = orders
+      .filter((order) => ['approved', 'completed', 'delivered'].includes(String(order.status).toLowerCase()))
+      .sort((a, b) => {
+        const aTime = new Date(a.deliveredAt ?? a.createdAt).getTime();
+        const bTime = new Date(b.deliveredAt ?? b.createdAt).getTime();
+        return bTime - aTime;
+      });
+
+    return delivered[0] ?? null;
+  }, [orders]);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -38,7 +80,9 @@ export function MyOrdersPage({ onBack }: { onBack: () => void }) {
             <Text style={[styles.summaryLabel, { color: theme.textMuted }]}>
               {tx('Active Orders')}
             </Text>
-            <Text style={[styles.summaryValue, { color: theme.textPrimary }]}>03</Text>
+            <Text style={[styles.summaryValue, { color: theme.textPrimary }]}>
+              {loading ? '...' : String(activeOrders.length).padStart(2, '0')}
+            </Text>
           </View>
           <View
             style={[
@@ -49,41 +93,60 @@ export function MyOrdersPage({ onBack }: { onBack: () => void }) {
             <Text style={[styles.summaryLabel, { color: theme.textMuted }]}>
               {tx('Last Delivery')}
             </Text>
-            <Text style={[styles.summaryValue, { color: C.teal }]}>02 Apr</Text>
+            <Text style={[styles.summaryValue, { color: C.teal }]}>
+              {loading ? '...' : formatDate(lastDeliveredOrder?.deliveredAt ?? lastDeliveredOrder?.createdAt).slice(0, 6)}
+            </Text>
           </View>
         </View>
 
-        {orders.map((order) => (
+        {loading ? (
+          <ActivityIndicator color={C.primary} style={{ marginTop: 32 }} />
+        ) : orders.length === 0 ? (
           <View
-            key={order.id}
             style={[
-              styles.orderCard,
+              styles.emptyCard,
               { backgroundColor: theme.surface, borderColor: theme.border },
             ]}
           >
-            <View style={styles.orderHead}>
-              <View style={styles.orderIcon}>
-                <AppIcon name="order" size={20} color={C.purple} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.orderTitle, { color: theme.textPrimary }]}>
-                  {tx(order.title)}
-                </Text>
-                <Text style={[styles.orderMeta, { color: theme.textMuted }]}>{order.id}</Text>
-              </View>
-              <View style={styles.statusChip}>
-                <Text style={styles.statusText}>{tx(order.status)}</Text>
-              </View>
-            </View>
-            <View style={[styles.detailStrip, { backgroundColor: theme.soft }]}>
-              <Text style={[styles.detailText, { color: theme.textSecondary }]}>{order.date}</Text>
-              <Text style={[styles.dot, { color: theme.textMuted }]}>•</Text>
-              <Text style={[styles.detailText, { color: theme.textSecondary }]}>
-                {tx(order.qty)}
-              </Text>
-            </View>
+            <Text style={[styles.emptyText, { color: theme.textMuted }]}>
+              {tx('No orders or redemptions found yet.')}
+            </Text>
           </View>
-        ))}
+        ) : (
+          orders.map((order) => (
+            <View
+              key={order.id}
+              style={[
+                styles.orderCard,
+                { backgroundColor: theme.surface, borderColor: theme.border },
+              ]}
+            >
+              <View style={styles.orderHead}>
+                <View style={styles.orderIcon}>
+                  <AppIcon name="order" size={20} color={C.purple} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.orderTitle, { color: theme.textPrimary }]}>
+                    {order.title || tx('Reward redemption')}
+                  </Text>
+                  <Text style={[styles.orderMeta, { color: theme.textMuted }]}>{order.id}</Text>
+                </View>
+                <View style={styles.statusChip}>
+                  <Text style={styles.statusText}>{toStatusLabel(order.status)}</Text>
+                </View>
+              </View>
+              <View style={[styles.detailStrip, { backgroundColor: theme.soft }]}>
+                <Text style={[styles.detailText, { color: theme.textSecondary }]}>
+                  {formatDate(order.deliveredAt ?? order.createdAt)}
+                </Text>
+                <Text style={[styles.dot, { color: theme.textMuted }]}>•</Text>
+                <Text style={[styles.detailText, { color: theme.textSecondary }]}>
+                  {`${order.points.toLocaleString('en-IN')} pts`}
+                </Text>
+              </View>
+            </View>
+          ))
+        )}
       </ScrollView>
     </View>
   );
@@ -123,4 +186,11 @@ const styles = StyleSheet.create({
   },
   detailText: { fontSize: 13, fontWeight: '700' },
   dot: { marginHorizontal: 8, fontSize: 14 },
+  emptyCard: {
+    borderRadius: 22,
+    padding: 24,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  emptyText: { fontSize: 14, textAlign: 'center' },
 });

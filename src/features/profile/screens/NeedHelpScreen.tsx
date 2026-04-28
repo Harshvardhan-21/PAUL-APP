@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Image,
@@ -14,25 +14,39 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as MailComposer from 'expo-mail-composer';
+import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AppIcon, C, PageHeader } from '../components/ProfileShared';
 import { usePreferenceContext } from '@/shared/preferences';
+import { settingsApi } from '@/shared/api';
+import { useAppData } from '@/shared/context/AppDataContext';
 
 export function NeedHelpPage({ onBack }: { onBack: () => void }) {
   const { t, tx, theme } = usePreferenceContext();
+  const { submitSupportTicket } = useAppData();
   const [subject, setSubject] = useState('');
   const [comment, setComment] = useState('');
   const [photo, setPhoto] = useState<string | null>(null);
   const [pendingPhoto, setPendingPhoto] = useState<string | null>(null);
   const [showSubjectDropdown, setShowSubjectDropdown] = useState(false);
+  const [supportMail, setSupportMail] = useState('info@srvelectricals.com');
+  const [supportWhatsapp, setSupportWhatsapp] = useState('918837684004');
+  const [submitting, setSubmitting] = useState(false);
   const subjectOptions = [
     tx('Normal Inquiry'),
     tx('Bulk Inquiry'),
     tx('Electrician Related Inquiry'),
     tx('QR Related Inquiry'),
   ];
-  const supportMail = 'info@srvelectricals.com';
-  const supportWhatsapp = '918837684004';
+
+  useEffect(() => {
+    settingsApi.getAppSettings()
+      .then((settings) => {
+        if (settings.supportEmail) setSupportMail(settings.supportEmail);
+        if (settings.whatsappNumber) setSupportWhatsapp(settings.whatsappNumber);
+      })
+      .catch(() => {});
+  }, []);
 
   const pickPhoto = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -58,6 +72,45 @@ export function NeedHelpPage({ onBack }: { onBack: () => void }) {
 
   const buildSupportMessage = () =>
     `SRV ${tx('Support Request')}\n${tx('Subject')}: ${subject.trim()}\n\n${tx('Comment')}:\n${comment.trim()}`;
+
+  const toDataUri = async (assetUri: string) => {
+    if (assetUri.startsWith('data:image/')) {
+      return assetUri;
+    }
+
+    const base64 = await LegacyFileSystem.readAsStringAsync(assetUri, {
+      encoding: LegacyFileSystem.EncodingType.Base64,
+    });
+
+    return `data:image/jpeg;base64,${base64}`;
+  };
+
+  const submitToSrv = async () => {
+    if (!subject.trim() || !comment.trim()) {
+      return Alert.alert(tx('incompleteForm'), tx('fillSubjectComment'));
+    }
+
+    setSubmitting(true);
+    try {
+      const photoUrl = photo ? await toDataUri(photo) : undefined;
+      await submitSupportTicket({
+        subject: subject.trim(),
+        comment: comment.trim(),
+        photoUrl,
+      });
+      setSubject('');
+      setComment('');
+      setPhoto(null);
+      Alert.alert(tx('Support Request'), tx('Your request has been submitted successfully.'));
+    } catch {
+      Alert.alert(
+        tx('Support Request'),
+        tx('We could not submit your request right now. Please try again.')
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const openWhatsapp = async () => {
     if (!subject.trim() || !comment.trim()) {
@@ -205,6 +258,23 @@ export function NeedHelpPage({ onBack }: { onBack: () => void }) {
             )}
           </TouchableOpacity>
         </View>
+        <TouchableOpacity
+          style={[
+            styles.primaryAction,
+            { backgroundColor: C.primary },
+            submitting && { opacity: 0.7 },
+          ]}
+          onPress={() => void submitToSrv()}
+          disabled={submitting}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.primaryActionText}>
+            {submitting ? tx('Submitting...') : tx('Submit Request')}
+          </Text>
+        </TouchableOpacity>
+        <Text style={[styles.helperText, { color: theme.textMuted }]}>
+          {tx('This saves your issue in the SRV system so admin can track and resolve it.')}
+        </Text>
         <View style={styles.actionGrid}>
           <TouchableOpacity onPress={() => void openWhatsapp()} activeOpacity={0.9}>
             <LinearGradient
@@ -408,6 +478,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   confirmDoneText: { fontSize: 15, fontWeight: '800', color: '#fff' },
+  primaryAction: {
+    height: 54,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  primaryActionText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  helperText: { fontSize: 12, lineHeight: 18, marginTop: -2 },
   actionGrid: { gap: 12 },
   actionBtn: {
     flexDirection: 'row',
