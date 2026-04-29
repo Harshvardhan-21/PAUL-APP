@@ -12,13 +12,16 @@ import {
 } from 'react-native';
 import { AppIcon, C, IconName, PageHeader } from '../components/ProfileShared';
 import { usePreferenceContext } from '@/shared/preferences';
+import { useAppData } from '@/shared/context/AppDataContext';
 
 const referImage = require('../assets/referfriend.png');
 
 export function ReferFriendPage({ onBack }: { onBack: () => void }) {
   const { t, tx, theme } = usePreferenceContext();
-  const referCode = '330276';
-  const referralLink = `https://srvelectricals.com/referral?code=${referCode}`;
+  const { referral } = useAppData();
+
+  const referCode = referral?.code ?? '';
+  const referralLink = referral?.link ?? `https://srvelectricals.com/join?ref=${referCode}`;
   const shareMessage = `Join SRV Electricals with my referral link: ${referralLink}`;
 
   const copyCode = async () => {

@@ -1,10 +1,14 @@
-// Backend URL — apna IP/URL yahan set karo
-// Development mein: apna computer ka local IP (e.g., 192.168.1.x)
-// Production mein: deployed server URL
+import { Platform } from 'react-native';
 
-export const API_BASE_URL = 'http://192.168.29.8:3001/api/v1';
+const ENV_URL = process.env.EXPO_PUBLIC_API_URL?.trim();
 
-// Agar emulator use kar rahe ho:
-// Android emulator: http://10.0.2.2:3001/api/v1
-// iOS simulator: http://localhost:3001/api/v1
-// Physical device: http://<your-pc-ip>:3001/api/v1
+const DEFAULT_URL_BY_PLATFORM: Record<string, string> = {
+  web: 'http://localhost:3001/api/v1',
+  android: 'http://10.0.2.2:3001/api/v1',
+  ios: 'http://127.0.0.1:3001/api/v1',
+};
+
+// Physical devices should set EXPO_PUBLIC_API_URL to your machine's LAN URL.
+const fallbackUrl = DEFAULT_URL_BY_PLATFORM[Platform.OS] ?? 'http://127.0.0.1:3001/api/v1';
+
+export const API_BASE_URL: string = ENV_URL && ENV_URL.length > 0 ? ENV_URL : fallbackUrl;

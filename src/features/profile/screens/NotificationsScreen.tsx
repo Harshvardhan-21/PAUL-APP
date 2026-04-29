@@ -3,9 +3,11 @@ import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacit
 import { AppIcon, C, PageHeader } from '../components/ProfileShared';
 import { usePreferenceContext } from '@/shared/preferences';
 import { notificationsApi } from '@/shared/api';
+import { useAuth } from '@/shared/context/AuthContext';
 
 export function NotificationsPage({ onBack }: { onBack: () => void }) {
   const { t, tx, theme } = usePreferenceContext();
+  const { role, user } = useAuth();
   const [readIds, setReadIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -15,7 +17,7 @@ export function NotificationsPage({ onBack }: { onBack: () => void }) {
 
   const fetchNotifications = () => {
     setLoading(true);
-    notificationsApi.getAll().then((res) => {
+    notificationsApi.getAll(role ?? undefined, user?.id).then((res) => {
       const data = res.data ?? [];
       setNotifData(
         data.map((n: any) => ({
@@ -37,7 +39,7 @@ export function NotificationsPage({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     fetchNotifications();
-  }, []);
+  }, [role, user?.id]);
 
   const handleDelete = (id: string) => {
     Alert.alert(

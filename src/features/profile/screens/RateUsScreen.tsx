@@ -1,15 +1,29 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { AppIcon, C, PageHeader } from '../components/ProfileShared';
 import { usePreferenceContext } from '@/shared/preferences';
 import { createShadow } from '@/shared/theme/shadows';
+import { ratingApi } from '@/shared/api';
 
 export function RateUsPage({ onBack }: { onBack: () => void }) {
   const { tx, theme, language } = usePreferenceContext();
   const [rating, setRating] = useState(0);
   const [review, setReview] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [loadingExisting, setLoadingExisting] = useState(true);
+
+  // Load existing rating on mount
+  useEffect(() => {
+    ratingApi.get().then((res) => {
+      if (res) {
+        setRating(res.rating ?? 0);
+        setReview(res.review ?? '');
+        setSubmitted(true);
+      }
+    }).catch(() => {}).finally(() => setLoadingExisting(false));
+  }, []);
 
   const rateCopy =
     language === 'Hindi'
@@ -54,8 +68,18 @@ export function RateUsPage({ onBack }: { onBack: () => void }) {
             optional: 'Optional',
           };
 
-  const handleSubmit = () => {
-    setSubmitted(true);
+  const handleSubmit = async () => {
+    if (rating === 0) return;
+    setSubmitting(true);
+    try {
+      await ratingApi.submit(rating, review.trim() || undefined);
+      setSubmitted(true);
+    } catch {
+      // silently fail — still show thank you
+      setSubmitted(true);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -222,15 +246,18 @@ export function RateUsPage({ onBack }: { onBack: () => void }) {
                 />
               </View>
             </View>
-            <TouchableOpacity
+      <TouchableOpacity
               style={[
                 styles.rateSubmitBtn,
                 { backgroundColor: rating > 0 ? C.primary : theme.border },
               ]}
               onPress={handleSubmit}
-              disabled={rating === 0}
+              disabled={rating === 0 || submitting}
             >
-              <Text style={styles.rateSubmitBtnText}>{tx('Submit Rating')}</Text>
+              {submitting
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <Text style={styles.rateSubmitBtnText}>{tx('Submit Rating')}</Text>
+              }
             </TouchableOpacity>
           </>
         )}

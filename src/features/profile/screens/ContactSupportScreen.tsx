@@ -1,37 +1,64 @@
-import React, { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AppIcon, C, IconName, PageHeader } from '../components/ProfileShared';
 import { usePreferenceContext } from '@/shared/preferences';
+import { settingsApi } from '@/shared/api';
 
 export function ContactSupportPage({ onBack }: { onBack: () => void }) {
   const { t, tx, theme } = usePreferenceContext();
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'contact' | 'faq'>('contact');
+  const [supportPhone, setSupportPhone] = useState('8837668004');
+  const [supportEmail, setSupportEmail] = useState('info@srvelectricals.com');
+  const [headOffice, setHeadOffice] = useState(
+    'Paul Electricals\nNangal kalan road, Village Jawaharke, Mansa, Punjab - 151505',
+  );
 
-  const contactItems = [
+  useEffect(() => {
+    settingsApi.getAppSettings()
+      .then((settings) => {
+        if (settings.supportPhone) setSupportPhone(settings.supportPhone);
+        if (settings.supportEmail) setSupportEmail(settings.supportEmail);
+      })
+      .catch(() => {});
+  }, []);
+
+  const contactItems = useMemo(() => [
     {
       icon: 'phone' as IconName,
       label: tx('Phone'),
-      value: '8837668004, 8837684004',
-      action: () => Alert.alert(tx('Call'), tx('Call support at 8837668004 or 8837684004.')),
+      value: supportPhone,
+      action: async () => {
+        const telUrl = `tel:${supportPhone.replace(/[^0-9+]/g, '')}`;
+        const canOpen = await Linking.canOpenURL(telUrl);
+        if (canOpen) {
+          await Linking.openURL(telUrl);
+          return;
+        }
+        Alert.alert(tx('Call'), `${tx('Call support at')} ${supportPhone}.`);
+      },
     },
     {
       icon: 'mail' as IconName,
       label: tx('Email'),
-      value: 'info@srvelectricals.com',
-      action: () => Alert.alert(tx('Email'), tx('Email support at info@srvelectricals.com.')),
+      value: supportEmail,
+      action: async () => {
+        const mailUrl = `mailto:${supportEmail}`;
+        const canOpen = await Linking.canOpenURL(mailUrl);
+        if (canOpen) {
+          await Linking.openURL(mailUrl);
+          return;
+        }
+        Alert.alert(tx('Email'), `${tx('Email support at')} ${supportEmail}.`);
+      },
     },
     {
       icon: 'building' as IconName,
       label: tx('Head Office'),
-      value: 'Paul Electricals\nNangal kalan road, Village Jawaharke, Mansa, Punjab - 151505',
-      action: () =>
-        Alert.alert(
-          tx('Address'),
-          'Paul Electricals, Nangal kalan road, Village Jawaharke, Mansa, Punjab - 151505'
-        ),
+      value: headOffice,
+      action: () => Alert.alert(tx('Address'), headOffice.replace('\n', ', ')),
     },
-  ];
+  ], [headOffice, supportEmail, supportPhone, tx]);
   const faqData = [
     {
       q: tx('Q1. What is SRV Electricals?'),

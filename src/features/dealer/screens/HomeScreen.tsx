@@ -1,6 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Animated,
   Easing,
   Image,
@@ -23,50 +24,22 @@ import { WebsitePromoSection } from '@/shared/components/WebsitePromoSection';
 import { createShadow } from '@/shared/theme/shadows';
 import { formatCountText, usePreferenceContext } from '@/shared/preferences';
 import type { Screen } from '@/shared/types/navigation';
-import { dealerProfile } from '../lib/dealerData';
-import { productsApi, testimonialsApi, bannersApi, type Product, type Testimonial } from '@/shared/api';
 import { useAuth } from '@/shared/context/AuthContext';
+import { useAppData } from '@/shared/context/AppDataContext';
 
 const logoImage = require('../../../../assets/banners/srv-logo.jpeg');
-const BANNER_SLIDES = [
-  {
-    image: require('../../../../assets/banners/aco.jpg.jpeg'),
-    resizeMode: 'cover' as const,
-    backgroundColor: '#192F67',
-  },
-  {
-    image: require('../../../../assets/banners/appliances.jpg.jpeg'),
-    resizeMode: 'cover' as const,
-    backgroundColor: '#E8C973',
-  },
-  {
-    image: require('../../../../assets/banners/co.jpg.jpeg'),
-    resizeMode: 'cover' as const,
-    backgroundColor: '#4153C8',
-  },
-  {
-    image: require('../../../../assets/banners/light.jpg.jpeg'),
-    resizeMode: 'cover' as const,
-    backgroundColor: '#8A20B4',
-  },
-  {
-    image: require('../../../../assets/banners/mcb-box.jpg.jpeg'),
-    resizeMode: 'cover' as const,
-    backgroundColor: '#7C8BD7',
-  },
-  {
-    image: require('../../../../assets/banners/vs-poster.jpg.jpeg'),
-    resizeMode: 'contain' as const,
-    backgroundColor: '#19211F',
-  },
-];
 
 const HOME_PRODUCT_ACCENTS: Record<string, readonly [string, string, string]> = {
-  fanbox: ['#FAFBFD', '#E9EEF5', '#D5DEE9'],
-  concealedbox: ['#FAFBFD', '#E9EEF5', '#D5DEE9'],
-  modular: ['#FAFBFD', '#E9EEF5', '#D5DEE9'],
-  exhaust: ['#FAFBFD', '#E9EEF5', '#D5DEE9'],
-  led: ['#FAFBFD', '#E9EEF5', '#D5DEE9'],
+  fanbox:       ['#FAFBFD', '#E9EEF5', '#D5DEE9'],
+  concealedbox: ['#F8FBFD', '#E4EFF6', '#CCDDE9'],
+  modular:      ['#FDFCFF', '#EDE9F8', '#DDD6F0'],
+  mcb:          ['#F8FBFF', '#E0EEFF', '#C7DDFF'],
+  busbar:       ['#FFFEF8', '#FEF3C7', '#FDE68A'],
+  exhaust:      ['#F8FFF9', '#DCFCE7', '#BBF7D0'],
+  led:          ['#FFFEF5', '#FEF9C3', '#FEF08A'],
+  changeover:   ['#FDFCFF', '#EDE9FE', '#DDD6FE'],
+  mainswitch:   ['#FFF8F9', '#FFE4E6', '#FECDD3'],
+  louver:       ['#F8FFFD', '#CCFBF1', '#99F6E4'],
 };
 
 function BellIcon({ color = '#10254A', size = 22 }: { color?: string; size?: number }) {
@@ -386,6 +359,7 @@ export function HomeScreen({
 }) {
   const { darkMode, tx, language } = usePreferenceContext();
   const { user: authUser } = useAuth();
+  const { products: ctxProducts, banners: ctxBanners, testimonials: ctxTestimonials, appSettings } = useAppData();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const statPulse = useRef(new Animated.Value(1)).current;
@@ -398,55 +372,43 @@ export function HomeScreen({
   const productFilters = ['All', 'Boxes', 'Fans'] as const;
   const [selectedFilter, setSelectedFilter] = useState<(typeof productFilters)[number]>('All');
   const [slide, setSlide] = useState(0);
-  const [apiProducts, setApiProducts] = useState<Product[]>([]);
-  const [apiTestimonials, setApiTestimonials] = useState<Testimonial[]>([]);
-  const [apiBannerSlides, setApiBannerSlides] = useState<typeof BANNER_SLIDES | null>(null);
+  const [apiBannerSlides, setApiBannerSlides] = useState<Array<{ image: any; resizeMode: 'cover' | 'contain'; backgroundColor: string }>>([]);
   const [loadedBannerUris, setLoadedBannerUris] = useState<Set<string>>(new Set());
+  const [supportWhatsapp, setSupportWhatsapp] = useState('918837684004');
 
+  // Map banners from context — ONLY use API data, no local fallback
   useEffect(() => {
-    productsApi.getAll().then((res) => {
-      if (res.data?.length) setApiProducts(res.data);
-    }).catch(() => {});
-    testimonialsApi.getAll().then((res) => {
-      if (res.data?.length) setApiTestimonials(res.data);
-    }).catch(() => {});
-    bannersApi.getAll('dealer').then((res) => {
-      if (res.data?.length) {
-        const mapped = res.data
-          .filter((b: any) => b.isActive !== false && b.status !== 'inactive')
-          .map((b: any) => ({
-            image: b.imageUrl ? { uri: b.imageUrl } : require('../../../../assets/banners/aco.jpg.jpeg'),
-            resizeMode: (b.resizeMode ?? 'cover') as 'cover' | 'contain',
-            backgroundColor: b.bgColor ?? '#192F67',
-          }));
-        if (mapped.length > 0) {
-          // Prefetch all network images first, then swap with fade
-          const uriImages = mapped.filter((b: any) => b.image?.uri).map((b: any) => b.image.uri as string);
-          const doSwap = () => {
-            Animated.timing(fadeAnim, withWebSafeNativeDriver({ toValue: 0, duration: 150 })).start(() => {
-              setSlide(0);
-              setApiBannerSlides(mapped as any);
-              Animated.timing(fadeAnim, withWebSafeNativeDriver({ toValue: 1, duration: 250 })).start();
-            });
-          };
-          if (uriImages.length > 0) {
-            Promise.all(uriImages.map((uri) => Image.prefetch(uri).catch(() => null)))
-              .then(() => {
-                setLoadedBannerUris(new Set(uriImages));
-                doSwap();
-              });
-          } else {
-            doSwap();
-          }
-        }
-      }
-    }).catch(() => {});
-  }, []);
+    const filtered = ctxBanners.filter((b) => b.isActive !== false && (b as any).status !== 'inactive');
+    const mapped = filtered.map((b) => ({
+      image: b.imageUrl ? { uri: b.imageUrl } : null,
+      resizeMode: ((b.resizeMode ?? 'cover') as 'cover' | 'contain'),
+      backgroundColor: b.bgColor ?? '#192F67',
+    })).filter((b) => b.image !== null);
+    const uriImages = mapped.filter((b) => b.image?.uri).map((b) => b.image.uri as string);
+    const doSwap = () => {
+      Animated.timing(fadeAnim, withWebSafeNativeDriver({ toValue: 0, duration: 150 })).start(() => {
+        setSlide(0);
+        setApiBannerSlides(mapped as any);
+        Animated.timing(fadeAnim, withWebSafeNativeDriver({ toValue: 1, duration: 250 })).start();
+      });
+    };
+    if (uriImages.length > 0) {
+      Promise.all(uriImages.map((uri) => Image.prefetch(uri).catch(() => null)))
+        .then(() => { setLoadedBannerUris(new Set(uriImages)); doSwap(); });
+    } else {
+      doSwap();
+    }
+  }, [ctxBanners]);
 
-  const activeBannerSlides = apiBannerSlides ?? BANNER_SLIDES;
+  // App settings from context
+  useEffect(() => {
+    if (appSettings?.whatsappNumber) setSupportWhatsapp(appSettings.whatsappNumber);
+  }, [appSettings]);
+
+  const activeBannerSlides = apiBannerSlides;
 
   const filteredProducts = useMemo(() => {
-    const items = apiProducts.slice(0, 4);
+    const items = ctxProducts.slice(0, 4);
     if (selectedFilter === 'Boxes') {
       return items.filter((product) => {
         const source = `${product.name} ${product.sub ?? ''}`.toLowerCase();
@@ -460,10 +422,13 @@ export function HomeScreen({
       });
     }
     return items;
-  }, [selectedFilter, apiProducts]);
+  }, [selectedFilter, ctxProducts]);
   const dealerTestimonials = useMemo<TestimonialItem[]>(() => {
-    if (apiTestimonials.length > 0) {
-      return apiTestimonials.map((t) => ({
+    if (ctxTestimonials.length === 0) {
+      return [];
+    }
+    if (ctxTestimonials.length > 0) {
+      return ctxTestimonials.map((t) => ({
         initials: t.initials ?? t.personName.slice(0, 2).toUpperCase(),
         name: t.personName,
         location: t.location ?? '',
@@ -476,42 +441,8 @@ export function HomeScreen({
         glow: t.gradientColors?.[0] ?? '#FFE7BA',
       }));
     }
-    // Fallback static testimonials
-    return [
-      {
-        initials: 'RS',
-        name: 'Rajesh Sharma',
-        location: language === 'Hindi' ? 'चंडीगढ़' : language === 'Punjabi' ? 'ਚੰਡੀਗੜ੍ਹ' : 'Chandigarh',
-        tier: language === 'Hindi' ? 'गोल्ड डीलर' : language === 'Punjabi' ? 'ਗੋਲਡ ਡੀਲਰ' : 'Gold Dealer',
-        yearsWithUs: language === 'Hindi' ? '4 साल से जुड़े' : language === 'Punjabi' ? '4 ਸਾਲ ਤੋਂ ਜੁੜੇ' : 'Connected for 4 years',
-        quote: language === 'Hindi'
-          ? 'एसआरवी के प्रोडक्ट समय पर मिलते हैं और नेटवर्क मैनेजमेंट पहले से कहीं ज्यादा आसान हो गया है।'
-          : language === 'Punjabi'
-            ? 'SRV ਦੇ ਪ੍ਰੋਡਕਟ ਸਮੇਂ ਤੇ ਮਿਲਦੇ ਹਨ ਅਤੇ ਨੈੱਟਵਰਕ ਮੈਨੇਜਮੈਂਟ ਹੁਣ ਕਾਫੀ ਆਸਾਨ ਹੋ ਗਿਆ ਹੈ।'
-            : 'Products arrive on time, and dealer-side network management now feels much more premium and effortless.',
-        highlight: language === 'Hindi' ? 'समय पर डिलीवरी और मजबूत सपोर्ट' : language === 'Punjabi' ? 'ਸਮੇਂ ਤੇ ਡਿਲਿਵਰੀ ਅਤੇ ਮਜ਼ਬੂਤ ਸਹਾਇਤਾ' : 'Reliable delivery and strong support',
-        colors: ['#FFF7E6', '#FDE6B4', '#F6C96E'],
-        ring: '#D97706',
-        glow: '#FFE7BA',
-      },
-      {
-        initials: 'MS',
-        name: 'Mandeep Singh',
-        location: language === 'Hindi' ? 'लुधियाना' : language === 'Punjabi' ? 'ਲੁਧਿਆਣਾ' : 'Ludhiana',
-        tier: language === 'Hindi' ? 'ग्रोथ पार्टनर' : language === 'Punjabi' ? 'ਗ੍ਰੋਥ ਪਾਰਟਨਰ' : 'Growth Partner',
-        yearsWithUs: language === 'Hindi' ? '3 साल से जुड़े' : language === 'Punjabi' ? '3 ਸਾਲ ਤੋਂ ਜੁੜੇ' : 'Connected for 3 years',
-        quote: language === 'Hindi'
-          ? 'व्हाट्सऐप सपोर्ट तेज है, ऑर्डर स्टेटस साफ दिखता है और बिजनेस फ्लो बहुत स्मूद हो गया है।'
-          : language === 'Punjabi'
-            ? 'ਵਟਸਐਪ ਸਹਾਇਤਾ ਤੇਜ਼ ਹੈ, ਆਰਡਰ ਸਥਿਤੀ ਸਾਫ ਦਿਖਦੀ ਹੈ ਅਤੇ ਕਾਰੋਬਾਰ ਦਾ ਫਲੋ ਹੁਣ ਹੋਰ ਸਮੂਥ ਹੋ ਗਿਆ ਹੈ।'
-            : 'WhatsApp support is quick, order status is crystal clear, and the entire business flow feels smoother now.',
-        highlight: language === 'Hindi' ? 'फास्ट सपोर्ट और स्मूद ऑपरेशन' : language === 'Punjabi' ? 'ਤੇਜ਼ ਸਹਾਇਤਾ ਅਤੇ ਸਮੂਥ ਓਪਰੇਸ਼ਨ' : 'Fast support with smoother operations',
-        colors: ['#FFF1EC', '#FFD8CC', '#F6B9A4'],
-        ring: '#C2410C',
-        glow: '#FFD8CC',
-      },
-    ];
-  }, [language, apiTestimonials]);
+    return [];
+  }, [language, ctxTestimonials]);
 
   useEffect(() => {
     const pulse = Animated.loop(
@@ -535,6 +466,9 @@ export function HomeScreen({
     if (autoSlideRef.current) {
       clearInterval(autoSlideRef.current);
     }
+    if (activeBannerSlides.length < 2) {
+      return;
+    }
     autoSlideRef.current = setInterval(() => {
       setSlide((prev) => (prev + 1) % activeBannerSlides.length);
     }, 4200);
@@ -555,6 +489,9 @@ export function HomeScreen({
       onMoveShouldSetPanResponder: (_, gs) =>
         Math.abs(gs.dx) > 12 && Math.abs(gs.dx) > Math.abs(gs.dy),
       onPanResponderRelease: (_, gs) => {
+        if (activeBannerSlides.length < 2) {
+          return;
+        }
         if (gs.dx < -40) {
           setSlide((prev) => {
             const next = (prev + 1) % activeBannerSlides.length;
@@ -583,7 +520,18 @@ export function HomeScreen({
       icon: UserPlusIcon,
       iconColors: ['#E8F1FF', '#CFE0FF'] as const,
       iconTint: '#0F4BA8',
-      onPress: () => onNavigate('electricians'),
+      onPress: () => {
+        const kyc = authUser?.kycStatus;
+        if (kyc !== 'verified') {
+          Alert.alert(
+            tx('KYC Required'),
+            tx('Please complete your KYC verification to access Associate Electrician. Contact your SRV admin to get verified.'),
+            [{ text: tx('OK') }]
+          );
+          return;
+        }
+        onNavigate('electricians');
+      },
     },
     {
       testID: 'dealer-home-action-wallet',
@@ -593,7 +541,18 @@ export function HomeScreen({
       icon: WalletIcon,
       iconColors: ['#FFF3DB', '#FFE1B0'] as const,
       iconTint: '#9A5A0E',
-      onPress: () => onNavigate('wallet'),
+      onPress: () => {
+        const kyc = authUser?.kycStatus;
+        if (kyc !== 'verified') {
+          Alert.alert(
+            tx('KYC Required'),
+            tx('Please complete your KYC verification to access Wallet. Contact your SRV admin to get verified.'),
+            [{ text: tx('OK') }]
+          );
+          return;
+        }
+        onNavigate('wallet');
+      },
     },
     {
       testID: 'dealer-home-action-call-electrician',
@@ -615,7 +574,7 @@ export function HomeScreen({
       iconTint: '#1A8F58',
       onPress: () =>
         Linking.openURL(
-          'https://wa.me/918837684004?text=Hello%20SRV%20Team,%20I%20need%20dealer%20support'
+          `https://wa.me/${supportWhatsapp}?text=Hello%20SRV%20Team,%20I%20need%20dealer%20support`
         ),
     },
   ];
@@ -653,17 +612,17 @@ export function HomeScreen({
         </View>
 
         <ProfileFlipCard profile={{
-          name: authUser?.name ?? dealerProfile.name,
-          phone: authUser?.phone ?? dealerProfile.phone,
-          dealer_code: authUser?.dealerCode ?? dealerProfile.dealer_code,
-          town: authUser?.town ?? dealerProfile.town,
-          district: authUser?.district ?? dealerProfile.district,
-          state: authUser?.state ?? dealerProfile.state,
-          address: authUser?.address ?? dealerProfile.address,
+          name: authUser?.name ?? '',
+          phone: authUser?.phone ?? '',
+          dealer_code: authUser?.dealerCode ?? '',
+          town: authUser?.town ?? '',
+          district: authUser?.district ?? '',
+          state: authUser?.state ?? '',
+          address: authUser?.address ?? '',
           electrician_code: '',
-          dealer_name: authUser?.name ?? dealerProfile.name,
-          dealer_town: authUser?.town ?? dealerProfile.town,
-          dealer_phone: authUser?.phone ?? dealerProfile.phone,
+          dealer_name: authUser?.name ?? '',
+          dealer_town: authUser?.town ?? '',
+          dealer_phone: authUser?.phone ?? '',
         }} role="dealer" photoUri={profilePhotoUri} apiPhotoUri={authUser?.profileImage ?? null} />
 
         <View style={styles.statRow}>
@@ -758,63 +717,67 @@ export function HomeScreen({
       </LinearGradient>
 
       <View style={styles.body}>
-        <Animated.View style={{ opacity: fadeAnim }} {...panResponder.panHandlers}>
-          <View
-            style={[
-              styles.bannerCard,
-              darkMode ? styles.bannerCardDark : null,
-              { height: heroImageHeight, backgroundColor: activeBannerSlides[slide % activeBannerSlides.length].backgroundColor },
-            ]}
-          >
-            <Image
-              source={activeBannerSlides[slide % activeBannerSlides.length].image}
-              style={styles.bannerImage}
-              resizeMode={activeBannerSlides[slide % activeBannerSlides.length].resizeMode}
-              onLoad={() => {
-                const uri = (activeBannerSlides[slide % activeBannerSlides.length]?.image as any)?.uri;
-                if (uri) setLoadedBannerUris(prev => new Set([...prev, uri]));
-              }}
-            />
-            {/* Hide background flash while network image loads */}
-            {(() => {
-              const uri = (activeBannerSlides[slide % activeBannerSlides.length]?.image as any)?.uri;
-              const isLoaded = !uri || loadedBannerUris.has(uri);
-              return !isLoaded ? (
-                <View style={[styles.bannerImage, { position: 'absolute', backgroundColor: '#f0f0f0' }]} />
-              ) : null;
-            })()}
-          </View>
-        </Animated.View>
-
-        <View style={styles.dotsRow}>
-          {activeBannerSlides.map((_, index) => (
-            <TouchableOpacity
-              key={index}
-              onPress={() => {
-                goToSlide(index);
-                setSlide(index);
-                resetAutoSlide();
-              }}
-              activeOpacity={0.8}
-            >
+        {activeBannerSlides.length > 0 ? (
+          <>
+            <Animated.View style={{ opacity: fadeAnim }} {...panResponder.panHandlers}>
               <View
                 style={[
-                  styles.dot,
-                  darkMode ? styles.dotDark : null,
-                  index === slide && (darkMode ? styles.dotActiveDark : styles.dotActive),
+                  styles.bannerCard,
+                  darkMode ? styles.bannerCardDark : null,
+                  { height: heroImageHeight, backgroundColor: activeBannerSlides[slide % activeBannerSlides.length]?.backgroundColor ?? '#192F67' },
                 ]}
-              />
-            </TouchableOpacity>
-          ))}
-        </View>
+              >
+                <Image
+                  source={activeBannerSlides[slide % activeBannerSlides.length]?.image}
+                  style={styles.bannerImage}
+                  resizeMode={activeBannerSlides[slide % activeBannerSlides.length]?.resizeMode ?? 'cover'}
+                  onLoad={() => {
+                    const uri = (activeBannerSlides[slide % activeBannerSlides.length]?.image as any)?.uri;
+                    if (uri) setLoadedBannerUris(prev => new Set([...prev, uri]));
+                  }}
+                />
+                {(() => {
+                  const uri = (activeBannerSlides[slide % activeBannerSlides.length]?.image as any)?.uri;
+                  const isLoaded = !uri || loadedBannerUris.has(uri);
+                  return !isLoaded ? (
+                    <View style={[styles.bannerImage, { position: 'absolute', backgroundColor: '#f0f0f0' }]} />
+                  ) : null;
+                })()}
+              </View>
+            </Animated.View>
+
+            <View style={styles.dotsRow}>
+              {activeBannerSlides.map((_, index) => (
+                <TouchableOpacity
+                  key={index}
+                  onPress={() => {
+                    goToSlide(index);
+                    setSlide(index);
+                    resetAutoSlide();
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <View
+                    style={[
+                      styles.dot,
+                      darkMode ? styles.dotDark : null,
+                      index === slide && (darkMode ? styles.dotActiveDark : styles.dotActive),
+                    ]}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        ) : null}
 
         <View style={styles.quickGrid}>
           {quickActions.map((item) => {
             const Icon = item.icon;
+            const isKycLocked = (item.testID === 'dealer-home-action-electricians' || item.testID === 'dealer-home-action-wallet') && authUser?.kycStatus !== 'verified';
             return (
               <TouchableOpacity
                 key={item.title}
-                style={[styles.quickCard, darkMode ? styles.quickCardDark : null, { width: cardW }]}
+                style={[styles.quickCard, darkMode ? styles.quickCardDark : null, { width: cardW, opacity: isKycLocked ? 0.75 : 1 }]}
                 onPress={item.onPress}
                 activeOpacity={0.9}
                 testID={item.testID}
@@ -829,8 +792,13 @@ export function HomeScreen({
                   {item.title}
                 </Text>
                 <Text style={[styles.quickSub, darkMode ? styles.quickSubDark : null]}>
-                  {item.sub}
+                  {isKycLocked ? tx('Complete KYC to unlock') : item.sub}
                 </Text>
+                {isKycLocked && (
+                  <View style={styles.kycLockBadge}>
+                    <Text style={styles.kycLockText}>🔒 {tx('KYC Required')}</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             );
           })}
@@ -895,11 +863,11 @@ export function HomeScreen({
         <View style={styles.productsGrid}>
           {filteredProducts.map((product, index) => {
             return (
-          <FeaturedCard
+              <FeaturedCard
                 key={product.id}
                 title={product.name}
-                subtitle={product.sub}
-                image={product.image}
+                subtitle={product.sub ?? ''}
+                image={product.image ?? ''}
                 width={cardW}
                 accent={
                   HOME_PRODUCT_ACCENTS[product.category] ??
@@ -1123,6 +1091,15 @@ const styles = StyleSheet.create({
   quickTitleDark: { color: '#F8FAFC' },
   quickSub: { color: '#74829D', fontSize: 11.5, marginTop: 3 },
   quickSubDark: { color: '#CBD5E1' },
+  kycLockBadge: {
+    marginTop: 8,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    alignSelf: 'flex-start',
+  },
+  kycLockText: { fontSize: 10, fontWeight: '800', color: '#92400E' },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',

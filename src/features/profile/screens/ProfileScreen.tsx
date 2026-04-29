@@ -1,4 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
+import * as LegacyFileSystem from 'expo-file-system/legacy';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -51,6 +52,7 @@ import {
 } from '@/features/electrician/screens/ElectricianTierScreen';
 import { authApi, storage } from '@/shared/api';
 import { useAuth } from '@/shared/context/AuthContext';
+import { useAppData } from '@/shared/context/AppDataContext';
 import {
   dealerMenuItems,
   detailRows,
@@ -58,7 +60,6 @@ import {
   electricianDetailRows,
   electricianMenuItems,
   getDealerMembership,
-  getProfileByRole,
   getTaxHolderValue,
   getTaxIdentityValue,
   settingsItems,
@@ -99,21 +100,40 @@ export function ProfileScreen({
 }) {
   // Real user from auth context
   const { user: authUser, updateUser, refreshProfile } = useAuth();
+  const { uploadProfilePhoto, removeProfilePhoto: removeRemoteProfilePhoto } = useAppData();
 
   // Refresh from backend when profile screen opens
   useEffect(() => {
     void refreshProfile();
   }, []);
 
-  // Build profile from real auth data, fallback to mock
+  // Build profile from live auth data only so admin-side updates stay authoritative.
   const buildProfileFromAuth = useMemo((): Profile => {
-    if (!authUser) return getProfileByRole(currentRole);
+    if (!authUser) {
+      return {
+        name: '',
+        phone: '',
+        email: '',
+        state: '',
+        city: '',
+        district: '',
+        pincode: '',
+        address: '',
+        gstHolderName: '',
+        gstNumber: '',
+        panHolderName: '',
+        panNumber: '',
+        dealerCode: '',
+        electricianCode: '',
+      };
+    }
     return {
       name: authUser.name ?? '',
       phone: authUser.phone ?? '',
       email: authUser.email ?? '',
       state: authUser.state ?? '',
       city: authUser.city ?? authUser.town ?? '',
+      district: authUser.district ?? '',
       pincode: authUser.pincode ?? '',
       address: authUser.address ?? '',
       gstHolderName: '',
@@ -138,13 +158,17 @@ export function ProfileScreen({
   const [draftTaxHolder, setDraftTaxHolder] = useState(getTaxHolderValue(buildProfileFromAuth));
   const [isSaving, setIsSaving] = useState(false);
 
-  // Sync profile when auth user changes (e.g. after login)
+  // Sync profile when auth user changes (e.g. after login or background refresh)
+  // IMPORTANT: Only sync draft when edit modal is closed — never overwrite user's in-progress edits
   useEffect(() => {
     const p = buildProfileFromAuth;
     setProfile(p);
-    setDraft(p);
-    setDraftTaxIdentity(getTaxIdentityValue(p));
-    setDraftTaxHolder(getTaxHolderValue(p));
+    // Only reset draft if user is NOT currently editing
+    if (!showEdit) {
+      setDraft(p);
+      setDraftTaxIdentity(getTaxIdentityValue(p));
+      setDraftTaxHolder(getTaxHolderValue(p));
+    }
   }, [buildProfileFromAuth]);
 
   const preferenceValue = usePreferenceValue({
@@ -185,10 +209,37 @@ export function ProfileScreen({
         .toUpperCase(),
     [profile.name]
   );
+  const activeProfilePhoto = profilePhotoUri ?? authUser?.profileImage ?? null;
+
+  const toDataUri = async (assetUri: string) => {
+    if (assetUri.startsWith('data:image/')) {
+      return assetUri;
+    }
+
+    const base64 = await LegacyFileSystem.readAsStringAsync(assetUri, {
+      encoding: LegacyFileSystem.EncodingType.Base64,
+    });
+
+    return `data:image/jpeg;base64,${base64}`;
+  };
+
+  const syncRemoteProfilePhoto = async (nextPhotoUri: string | null) => {
+    if (!nextPhotoUri) {
+      await removeRemoteProfilePhoto();
+      onProfilePhotoChange(null); // clear local state — backend is now source of truth
+      await refreshProfile();
+      return;
+    }
+
+    const dataUri = await toDataUri(nextPhotoUri);
+    await uploadProfilePhoto(dataUri, 'profile-screen');
+    onProfilePhotoChange(null); // clear local URI — backend URL will come via refreshProfile
+    await refreshProfile();
+  };
 
   const openEdit = () => {
     setDraft(profile);
-    setDraftPhotoUri(profilePhotoUri);
+    setDraftPhotoUri(activeProfilePhoto);
     setPendingDraftImage(null);
     setDraftTaxIdentity(getTaxIdentityValue(profile));
     setDraftTaxHolder(getTaxHolderValue(profile));
@@ -198,14 +249,14 @@ export function ProfileScreen({
 
   const openPhotoPicker = () => {
     setDraft(profile);
-    setDraftPhotoUri(profilePhotoUri);
+    setDraftPhotoUri(activeProfilePhoto);
     setPendingDraftImage(null);
     setShowImgPicker(true);
   };
 
   const closeEdit = () => {
     setDraft(profile);
-    setDraftPhotoUri(profilePhotoUri);
+    setDraftPhotoUri(activeProfilePhoto);
     setPendingDraftImage(null);
     setDraftTaxIdentity(getTaxIdentityValue(profile));
     setDraftTaxHolder(getTaxHolderValue(profile));
@@ -219,6 +270,7 @@ export function ProfileScreen({
       key === 'name' ||
       key === 'city' ||
       key === 'state' ||
+      key === 'district' ||
       key === 'gstHolderName' ||
       key === 'panHolderName'
     ) {
@@ -252,6 +304,12 @@ export function ProfileScreen({
       return Alert.alert(
         tx('Invalid state'),
         tx('State should contain only alphabets and spaces.')
+      );
+    }
+    if (draft.district.trim() && !/^[A-Za-z ]+$/.test(draft.district.trim())) {
+      return Alert.alert(
+        tx('Invalid district'),
+        tx('District should contain only alphabets and spaces.')
       );
     }
     if (draft.pincode.trim() && !/^\d+$/.test(draft.pincode.trim())) {
@@ -289,41 +347,43 @@ export function ProfileScreen({
 
     // Save to backend
     setIsSaving(true);
+    const photoChanged = draftPhotoUri !== activeProfilePhoto;
     const apiData = currentRole === 'dealer'
       ? {
           name: nextProfile.name,
           email: nextProfile.email,
           town: nextProfile.city,
-          district: nextProfile.city,
+          district: nextProfile.district,
           state: nextProfile.state,
           address: nextProfile.address,
           pincode: nextProfile.pincode,
           gstNumber: nextProfile.gstNumber,
-          // Send profile photo URI so admin panel can see it too
-          profileImage: draftPhotoUri ?? undefined,
         }
       : {
           name: nextProfile.name,
           email: nextProfile.email,
           city: nextProfile.city,
           state: nextProfile.state,
-          district: nextProfile.city,
+          district: nextProfile.district,
           address: nextProfile.address,
           pincode: nextProfile.pincode,
-          // Send profile photo URI so admin panel can see it too
-          profileImage: draftPhotoUri ?? undefined,
         };
 
-    authApi.updateProfile(apiData)
-      .then((updatedUser) => {
-        // Update auth context so flip card and everywhere else updates
+    void authApi.updateProfile(apiData)
+      .then(async (updatedUser) => {
+        // Update auth context immediately so UI reflects changes
         updateUser(updatedUser);
-        // Persist to local storage
-        storage.setUserProfile(updatedUser);
+        await storage.setUserProfile(updatedUser);
+        if (photoChanged) {
+          await syncRemoteProfilePhoto(draftPhotoUri);
+        } else {
+          await refreshProfile();
+        }
       })
-      .catch(() => {
-        // Backend save failed — keep local changes, show silent error
-        // Profile is already updated locally so UX is not broken
+      .catch(async () => {
+        Alert.alert(tx('Unable to save changes'), tx('Please try again.'));
+        // Revert local state back to what's in auth context
+        await refreshProfile();
       })
       .finally(() => setIsSaving(false));
   };
@@ -387,8 +447,12 @@ export function ProfileScreen({
     if (showEdit) {
       setDraftPhotoUri(pendingDraftImage);
     } else {
-      setDraftPhotoUri(pendingDraftImage);
-      onProfilePhotoChange(pendingDraftImage);
+      setIsSaving(true);
+      void syncRemoteProfilePhoto(pendingDraftImage)
+        .catch(() => {
+          Alert.alert(tx('Unable to update photo'), tx('Please try again.'));
+        })
+        .finally(() => setIsSaving(false));
     }
     setPendingDraftImage(null);
   };
@@ -398,7 +462,12 @@ export function ProfileScreen({
     setPendingDraftImage(null);
     setDraftPhotoUri(null);
     if (!showEdit) {
-      onProfilePhotoChange(null);
+      setIsSaving(true);
+      void syncRemoteProfilePhoto(null)
+        .catch(() => {
+          Alert.alert(tx('Unable to update photo'), tx('Please try again.'));
+        })
+        .finally(() => setIsSaving(false));
     }
   };
 

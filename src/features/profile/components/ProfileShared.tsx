@@ -31,19 +31,20 @@ export const C = {
 } as const;
 
 export const defaultProfile = {
-  name: 'Harshvardhan',
-  phone: '9162038214',
+  name: '',
+  phone: '',
   email: '',
-  state: 'Punjab',
-  city: 'Mansa',
-  pincode: '151505',
-  address: 'YOUR+PC8, Green Valley',
-  gstHolderName: 'Harshvardhan',
-  gstNumber: 'BIBPB7675A',
+  state: '',
+  city: '',
+  district: '',
+  pincode: '',
+  address: '',
+  gstHolderName: '',
+  gstNumber: '',
   panHolderName: '',
   panNumber: '',
-  dealerCode: '215548',
-  electricianCode: 'PB03900-001',
+  dealerCode: '',
+  electricianCode: '',
 };
 
 export type Profile = typeof defaultProfile;
@@ -808,3 +809,4 @@ export const shared = StyleSheet.create({
   emptyEmoji: { fontSize: 40 },
   emptyText: { fontSize: 15, color: C.muted, fontWeight: '600', textAlign: 'center' },
 });
+
