@@ -6,6 +6,7 @@ import {
   catalogApi,
   electriciansApi,
   festivalApi,
+  giftStoreApi,
   notificationsApi,
   offersApi,
   productsApi,
@@ -24,6 +25,7 @@ import {
   type AppSettings,
   type Banner,
   type DealerBonus,
+  type GiftProduct,
   type Offer,
   type PaginatedElectricians,
   type PaginatedScans,
@@ -64,6 +66,8 @@ type AppDataContextType = {
   catalogLoading: boolean;
   // Banners
   banners: Banner[];
+  // Gift Store
+  giftProducts: GiftProduct[];
   // Testimonials
   testimonials: Testimonial[];
   // Electricians (dealer)
@@ -113,6 +117,7 @@ const defaultCtx: AppDataContextType = {
   categories: [],
   catalogLoading: true,
   banners: [],
+  giftProducts: [],
   testimonials: [],
   electricians: null,
   redemptions: [],
@@ -154,6 +159,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [banners, setBanners] = useState<Banner[]>([]);
+  const [giftProducts, setGiftProducts] = useState<GiftProduct[]>([]);
   const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
   const [electricians, setElectricians] = useState<PaginatedElectricians | null>(null);
   const [redemptions, setRedemptions] = useState<RedemptionRecord[]>([]);
@@ -166,7 +172,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
   // ── Public data (no auth needed) ─────────────────────────────────────────
   const loadPublicData = async () => {
-    const [prods, cats, bans, tests, setts, fest, offs, schemes] = await Promise.all([
+    const [prods, cats, bans, tests, setts, fest, offs, schemes, gifts] = await Promise.all([
       productsApi.getAll().catch(() => ({ data: [] as Product[] })),
       catalogApi.getCategories().catch(() => ({ data: [] as ProductCategory[] })),
       bannersApi.getAll(role ?? undefined).catch(() => ({ data: [] as Banner[] })),
@@ -175,6 +181,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       festivalApi.getTheme().catch(() => null),
       offersApi.getAll(role ?? undefined).catch(() => ({ data: [] as Offer[] })),
       rewardSchemesApi.getAll().catch(() => ({ data: [] as RewardScheme[] })),
+      giftStoreApi.getProducts(role ?? undefined).catch(() => ({ data: [] as GiftProduct[] })),
     ]);
     setProducts(prods.data ?? []);
     setCategories(cats.data ?? []);
@@ -184,6 +191,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     if (fest) setFestival(fest);
     setOffers(offs.data ?? []);
     setRewardSchemes(schemes.data ?? []);
+    setGiftProducts(gifts.data ?? []);
     setCatalogLoading(false);
   };
 
@@ -248,7 +256,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     });
     const interval = setInterval(() => {
       if (AppState.currentState === 'active') void refreshAll();
-    }, 10000); // 10s polling keeps admin-side content changes visible quickly in-app.
+    }, 30000); // 30s polling keeps admin-side content changes visible without being too aggressive.
     return () => { sub.remove(); clearInterval(interval); };
   }, [isAuthenticated, user?.id]);
 
@@ -320,8 +328,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<AppDataContextType>(() => ({
     loading, profile, wallet, walletSummary: wallet, scanHistory, notifications, offers,
-    products, catalogProducts: products, categories, catalogLoading, banners, testimonials,
-    electricians, redemptions, appSettings, dealerBonus, userQrCode, referral,
+    products, catalogProducts: products, categories, catalogLoading, banners, giftProducts,
+    testimonials, electricians, redemptions, appSettings, dealerBonus, userQrCode, referral,
     rewardSchemes, festival,
     refreshAll, submitScan, addElectrician, updateProfile, uploadProfilePhoto,
     removeProfilePhoto, updatePreferences, saveBankAccount, redeemReward,
@@ -329,7 +337,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     deleteNotification, submitRating,
   }), [
     loading, profile, wallet, scanHistory, notifications, offers, products, categories,
-    catalogLoading, banners, testimonials, electricians, redemptions, appSettings,
+    catalogLoading, banners, giftProducts, testimonials, electricians, redemptions, appSettings,
     dealerBonus, userQrCode, referral, rewardSchemes, festival,
   ]);
 

@@ -2251,10 +2251,7 @@ export function OnboardingScreen({
                                       : tx('Enter complete business address')
                                   }
                                   error={errors.signupAddress}
-                                  onFocus={() => {
-                                    scrollToForm();
-                                    setShowAddressModal(true);
-                                  }}
+                                  onFocus={scrollToForm}
                                   inputRef={signupAddressRef}
                                   onSubmitEditing={continueSignup}
                                   actionLabel={
@@ -2603,10 +2600,7 @@ export function OnboardingScreen({
                                     : tx('Enter your complete address')
                                 }
                                 error={errors.signupAddress}
-                                onFocus={() => {
-                                  scrollToForm();
-                                  setShowAddressModal(true);
-                                }}
+                                onFocus={scrollToForm}
                                 inputRef={signupAddressRef}
                                 onSubmitEditing={continueSignup}
                                 actionLabel={
@@ -2841,7 +2835,7 @@ export function OnboardingScreen({
                 onChangeText={(v) => {
                   const t = v.replace(/[^A-Za-z ]/g, '');
                   setSignupCity(t);
-                  setSignupAddress(`${signupCity}, ${signupState}, ${signupPincode}`);
+                  setSignupAddress(`${t}, ${signupState}, ${signupPincode}`.replace(/^,\s*|,\s*$/g, '').replace(/,\s*,/g, ','));
                 }}
                 placeholder={tx('Enter city')}
                 placeholderTextColor="#90A0BB"
@@ -2855,7 +2849,7 @@ export function OnboardingScreen({
                 onChangeText={(v) => {
                   const t = v.replace(/[^A-Za-z ]/g, '');
                   setSignupState(t);
-                  setSignupAddress(`${signupCity}, ${signupState}, ${signupPincode}`);
+                  setSignupAddress(`${signupCity}, ${t}, ${signupPincode}`.replace(/^,\s*|,\s*$/g, '').replace(/,\s*,/g, ','));
                 }}
                 placeholder={tx('Enter state')}
                 placeholderTextColor="#90A0BB"
@@ -2869,7 +2863,7 @@ export function OnboardingScreen({
                 onChangeText={(v) => {
                   const t = v.replace(/\D/g, '').slice(0, 6);
                   setSignupPincode(t);
-                  setSignupAddress(`${signupCity}, ${signupState}, ${signupPincode}`);
+                  setSignupAddress(`${signupCity}, ${signupState}, ${t}`.replace(/^,\s*|,\s*$/g, '').replace(/,\s*,/g, ','));
                 }}
                 placeholder={tx('Enter 6-digit pincode')}
                 keyboardType="numeric"

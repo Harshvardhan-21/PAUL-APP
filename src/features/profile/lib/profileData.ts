@@ -146,6 +146,7 @@ export const detailRows: ProfileDetailRow[] = [
   { label: 'Address', key: 'address' },
   { label: 'State', key: 'state' },
   { label: 'City', key: 'city' },
+  { label: 'District', key: 'district' },
   { label: 'Pincode', key: 'pincode' },
   { label: 'GST Holder Name', key: 'gstHolderName' },
   { label: 'GST Number', key: 'gstNumber' },
@@ -160,6 +161,7 @@ export const electricianDetailRows: ProfileDetailRow[] = [
   { label: 'Address', key: 'address' },
   { label: 'State', key: 'state' },
   { label: 'City', key: 'city' },
+  { label: 'District', key: 'district' },
   { label: 'Pincode', key: 'pincode' },
   { label: 'Electrician Code', key: 'electricianCode' },
 ];
@@ -169,6 +171,7 @@ export const editRows: ProfileEditRow[] = [
   { label: 'Phone Number', key: 'phone', keyboardType: 'phone-pad', maxLength: 10 },
   { label: 'Email', key: 'email', keyboardType: 'email-address' },
   { label: 'City', key: 'city' },
+  { label: 'District', key: 'district' },
   { label: 'State', key: 'state' },
   { label: 'Pincode', key: 'pincode', keyboardType: 'phone-pad', maxLength: 6 },
   { label: 'Address', key: 'address' },

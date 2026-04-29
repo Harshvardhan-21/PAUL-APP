@@ -58,8 +58,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    await authApi.logout();
+    const accessToken = await storage.getAccessToken();
+    await storage.clearAll();
     setState({ isLoading: false, isAuthenticated: false, user: null, role: null });
+    void authApi.logout(accessToken);
   }, []);
 
   const refreshProfile = useCallback(async () => {
@@ -84,12 +86,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         void refreshProfile();
       }
     });
-    // Poll aggressively while active so admin updates show up quickly in the app.
+    // Poll every 30s while active so admin updates show up in the app without being too aggressive.
     const interval = setInterval(() => {
       if (AppState.currentState === 'active') {
         void refreshProfile();
       }
-    }, 5000);
+    }, 30000);
     return () => {
       sub.remove();
       clearInterval(interval);

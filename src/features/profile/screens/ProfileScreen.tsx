@@ -116,6 +116,7 @@ export function ProfileScreen({
         email: '',
         state: '',
         city: '',
+        district: '',
         pincode: '',
         address: '',
         gstHolderName: '',
@@ -132,6 +133,7 @@ export function ProfileScreen({
       email: authUser.email ?? '',
       state: authUser.state ?? '',
       city: authUser.city ?? authUser.town ?? '',
+      district: authUser.district ?? '',
       pincode: authUser.pincode ?? '',
       address: authUser.address ?? '',
       gstHolderName: '',
@@ -156,13 +158,17 @@ export function ProfileScreen({
   const [draftTaxHolder, setDraftTaxHolder] = useState(getTaxHolderValue(buildProfileFromAuth));
   const [isSaving, setIsSaving] = useState(false);
 
-  // Sync profile when auth user changes (e.g. after login)
+  // Sync profile when auth user changes (e.g. after login or background refresh)
+  // IMPORTANT: Only sync draft when edit modal is closed — never overwrite user's in-progress edits
   useEffect(() => {
     const p = buildProfileFromAuth;
     setProfile(p);
-    setDraft(p);
-    setDraftTaxIdentity(getTaxIdentityValue(p));
-    setDraftTaxHolder(getTaxHolderValue(p));
+    // Only reset draft if user is NOT currently editing
+    if (!showEdit) {
+      setDraft(p);
+      setDraftTaxIdentity(getTaxIdentityValue(p));
+      setDraftTaxHolder(getTaxHolderValue(p));
+    }
   }, [buildProfileFromAuth]);
 
   const preferenceValue = usePreferenceValue({
@@ -264,6 +270,7 @@ export function ProfileScreen({
       key === 'name' ||
       key === 'city' ||
       key === 'state' ||
+      key === 'district' ||
       key === 'gstHolderName' ||
       key === 'panHolderName'
     ) {
@@ -297,6 +304,12 @@ export function ProfileScreen({
       return Alert.alert(
         tx('Invalid state'),
         tx('State should contain only alphabets and spaces.')
+      );
+    }
+    if (draft.district.trim() && !/^[A-Za-z ]+$/.test(draft.district.trim())) {
+      return Alert.alert(
+        tx('Invalid district'),
+        tx('District should contain only alphabets and spaces.')
       );
     }
     if (draft.pincode.trim() && !/^\d+$/.test(draft.pincode.trim())) {
@@ -340,7 +353,7 @@ export function ProfileScreen({
           name: nextProfile.name,
           email: nextProfile.email,
           town: nextProfile.city,
-          district: nextProfile.city,
+          district: nextProfile.district,
           state: nextProfile.state,
           address: nextProfile.address,
           pincode: nextProfile.pincode,
@@ -351,7 +364,7 @@ export function ProfileScreen({
           email: nextProfile.email,
           city: nextProfile.city,
           state: nextProfile.state,
-          district: nextProfile.city,
+          district: nextProfile.district,
           address: nextProfile.address,
           pincode: nextProfile.pincode,
         };

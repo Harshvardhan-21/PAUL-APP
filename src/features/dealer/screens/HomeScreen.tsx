@@ -376,29 +376,27 @@ export function HomeScreen({
   const [loadedBannerUris, setLoadedBannerUris] = useState<Set<string>>(new Set());
   const [supportWhatsapp, setSupportWhatsapp] = useState('918837684004');
 
-  // Map banners from context
+  // Map banners from context — ONLY use API data, no local fallback
   useEffect(() => {
-    const filtered = ctxBanners.filter((b) => b.isActive !== false);
-    if (filtered.length > 0) {
-      const mapped = filtered.map((b) => ({
-        image: b.imageUrl ? { uri: b.imageUrl } : require('../../../../assets/banners/aco.jpg.jpeg'),
-        resizeMode: ((b.resizeMode ?? 'cover') as 'cover' | 'contain'),
-        backgroundColor: b.bgColor ?? '#192F67',
-      }));
-      const uriImages = mapped.filter((b) => b.image?.uri).map((b) => b.image.uri as string);
-      const doSwap = () => {
-        Animated.timing(fadeAnim, withWebSafeNativeDriver({ toValue: 0, duration: 150 })).start(() => {
-          setSlide(0);
-          setApiBannerSlides(mapped);
-          Animated.timing(fadeAnim, withWebSafeNativeDriver({ toValue: 1, duration: 250 })).start();
-        });
-      };
-      if (uriImages.length > 0) {
-        Promise.all(uriImages.map((uri) => Image.prefetch(uri).catch(() => null)))
-          .then(() => { setLoadedBannerUris(new Set(uriImages)); doSwap(); });
-      } else {
-        doSwap();
-      }
+    const filtered = ctxBanners.filter((b) => b.isActive !== false && (b as any).status !== 'inactive');
+    const mapped = filtered.map((b) => ({
+      image: b.imageUrl ? { uri: b.imageUrl } : null,
+      resizeMode: ((b.resizeMode ?? 'cover') as 'cover' | 'contain'),
+      backgroundColor: b.bgColor ?? '#192F67',
+    })).filter((b) => b.image !== null);
+    const uriImages = mapped.filter((b) => b.image?.uri).map((b) => b.image.uri as string);
+    const doSwap = () => {
+      Animated.timing(fadeAnim, withWebSafeNativeDriver({ toValue: 0, duration: 150 })).start(() => {
+        setSlide(0);
+        setApiBannerSlides(mapped as any);
+        Animated.timing(fadeAnim, withWebSafeNativeDriver({ toValue: 1, duration: 250 })).start();
+      });
+    };
+    if (uriImages.length > 0) {
+      Promise.all(uriImages.map((uri) => Image.prefetch(uri).catch(() => null)))
+        .then(() => { setLoadedBannerUris(new Set(uriImages)); doSwap(); });
+    } else {
+      doSwap();
     }
   }, [ctxBanners]);
 
@@ -726,13 +724,13 @@ export function HomeScreen({
                 style={[
                   styles.bannerCard,
                   darkMode ? styles.bannerCardDark : null,
-                  { height: heroImageHeight, backgroundColor: activeBannerSlides[slide % activeBannerSlides.length].backgroundColor },
+                  { height: heroImageHeight, backgroundColor: activeBannerSlides[slide % activeBannerSlides.length]?.backgroundColor ?? '#192F67' },
                 ]}
               >
                 <Image
-                  source={activeBannerSlides[slide % activeBannerSlides.length].image}
+                  source={activeBannerSlides[slide % activeBannerSlides.length]?.image}
                   style={styles.bannerImage}
-                  resizeMode={activeBannerSlides[slide % activeBannerSlides.length].resizeMode}
+                  resizeMode={activeBannerSlides[slide % activeBannerSlides.length]?.resizeMode ?? 'cover'}
                   onLoad={() => {
                     const uri = (activeBannerSlides[slide % activeBannerSlides.length]?.image as any)?.uri;
                     if (uri) setLoadedBannerUris(prev => new Set([...prev, uri]));

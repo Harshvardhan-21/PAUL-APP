@@ -36,6 +36,7 @@ export const defaultProfile = {
   email: '',
   state: '',
   city: '',
+  district: '',
   pincode: '',
   address: '',
   gstHolderName: '',

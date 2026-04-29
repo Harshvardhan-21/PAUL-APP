@@ -1,4 +1,5 @@
 import { api } from './client';
+import { API_BASE_URL as apiBaseUrl } from './config';
 import { storage } from './storage';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -96,13 +97,29 @@ export const authApi = {
   updateProfile: (data: Partial<UserProfile>) =>
     api.patch<UserProfile>('/mobile/auth/profile', data, true),
 
-  logout: async () => {
+  logout: async (accessTokenOverride?: string | null) => {
+    const accessToken = accessTokenOverride ?? await storage.getAccessToken();
+
+    if (!accessToken) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+
     try {
-      await api.post('/mobile/auth/logout', {}, true);
+      await fetch(`${apiBaseUrl}/mobile/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        signal: controller.signal,
+      });
     } catch {
-      // Silently ignore API errors — always clear local storage
+      // Local logout should still succeed even if backend is unavailable.
     } finally {
-      await storage.clearAll();
+      clearTimeout(timer);
     }
   },
 };
@@ -132,6 +149,14 @@ export const catalogApi = {
 export const bannersApi = {
   getAll: (role?: string) =>
     api.get<{ data: Banner[] }>('/mobile/banners', role ? { role } : undefined),
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GIFT STORE
+// ─────────────────────────────────────────────────────────────────────────────
+export const giftStoreApi = {
+  getProducts: (role?: string) =>
+    api.get<{ data: GiftProduct[] }>('/mobile/gift-products', role ? { role } : undefined),
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -411,6 +436,18 @@ export type Banner = {
   isActive: boolean;
   displayOrder: number;
   targetRole?: string[];
+};
+
+export type GiftProduct = {
+  id: string;
+  name: string;
+  description: string;
+  imageUrl: string | null;
+  pointsRequired: number;
+  mrp: number;
+  stock: number;
+  badge: string;
+  targetRole: string;
 };
 
 export type AppNotification = {

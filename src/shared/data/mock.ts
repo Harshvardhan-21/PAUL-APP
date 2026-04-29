@@ -22,30 +22,6 @@ export const roleContent: Record<
   },
 };
 
-export const banners = [
-  {
-    id: '1',
-    tag: 'New Arrival',
-    title: 'AUTOMATIC',
-    subtitle: 'CHANGE OVER SWITCH',
-    colors: ['#2A1C18', '#5A261F', '#D6683C'] as [string, string, string],
-  },
-  {
-    id: '2',
-    tag: 'Best Seller',
-    title: 'MODULAR',
-    subtitle: 'SWITCH PLATES',
-    colors: ['#211A21', '#462229', '#B24A39'] as [string, string, string],
-  },
-  {
-    id: '3',
-    tag: 'Popular',
-    title: 'JUNCTION',
-    subtitle: 'BOX SERIES',
-    colors: ['#1D2129', '#293E5C', '#7D98C7'] as [string, string, string],
-  },
-];
-
 export const featuredProducts = [
   {
     id: 'fp1',

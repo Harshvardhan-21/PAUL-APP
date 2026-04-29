@@ -328,38 +328,11 @@ const homeCatStyles = StyleSheet.create({
 
 const logoImage = require('../../../../assets/banners/srv-logo.jpeg');
 
-const BANNER_SLIDES = [
-  {
-    image: require('../../../../assets/banners/aco.jpg.jpeg'),
-    resizeMode: 'cover' as const,
-    backgroundColor: '#192F67',
-  },
-  {
-    image: require('../../../../assets/banners/appliances.jpg.jpeg'),
-    resizeMode: 'cover' as const,
-    backgroundColor: '#E8C973',
-  },
-  {
-    image: require('../../../../assets/banners/co.jpg.jpeg'),
-    resizeMode: 'cover' as const,
-    backgroundColor: '#4153C8',
-  },
-  {
-    image: require('../../../../assets/banners/light.jpg.jpeg'),
-    resizeMode: 'cover' as const,
-    backgroundColor: '#8A20B4',
-  },
-  {
-    image: require('../../../../assets/banners/mcb-box.jpg.jpeg'),
-    resizeMode: 'cover' as const,
-    backgroundColor: '#7C8BD7',
-  },
-  {
-    image: require('../../../../assets/banners/vs-poster.jpg.jpeg'),
-    resizeMode: 'contain' as const,
-    backgroundColor: '#19211F',
-  },
-];
+type BannerSlide = {
+  image: { uri: string };
+  resizeMode: 'cover' | 'contain';
+  backgroundColor: string;
+};
 
 type HomeProduct = {
   id: string;
@@ -637,7 +610,7 @@ export function HomeScreen({
   const [slide, setSlide] = useState(0);
   const productFilters = ['All', 'Boxes', 'Fans'] as const;
   const [selectedFilter, setSelectedFilter] = useState<(typeof productFilters)[number]>('All');
-  const [apiBannerSlides, setApiBannerSlides] = useState<typeof BANNER_SLIDES | null>(null);
+  const [apiBannerSlides, setApiBannerSlides] = useState<BannerSlide[]>([]);
   const [testimonials, setTestimonials] = useState<TestimonialItem[]>([]);
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const statsPulse = useRef(new Animated.Value(1)).current;
@@ -719,17 +692,17 @@ export function HomeScreen({
     }
   }, [ctxTestimonials]);
 
-  // Map banners from context
+  // Map banners from context — ONLY use API data, no local fallback
   useEffect(() => {
-    const filtered = ctxBanners.filter((b) => b.isActive !== false);
-    if (filtered.length > 0) {
-      const mapped = filtered.map((b) => ({
-        image: b.imageUrl ? { uri: b.imageUrl } : require('../../../../assets/banners/aco.jpg.jpeg'),
-        resizeMode: ((b.resizeMode ?? 'cover') as 'cover' | 'contain'),
-        backgroundColor: b.bgColor ?? '#192F67',
-      }));
-      setApiBannerSlides(mapped as any);
-    }
+    const filtered = ctxBanners.filter(
+      (b) => b.isActive !== false && (b as any).status !== 'inactive' && b.imageUrl,
+    );
+    const mapped = filtered.map((b) => ({
+      image: { uri: b.imageUrl! },
+      resizeMode: ((b.resizeMode ?? 'cover') as 'cover' | 'contain'),
+      backgroundColor: b.bgColor ?? '#192F67',
+    }));
+    setApiBannerSlides(mapped as any);
   }, [ctxBanners]);
 
   const filteredProducts = useMemo(() => {
@@ -764,10 +737,10 @@ export function HomeScreen({
     if (autoSlideRef.current) {
       clearInterval(autoSlideRef.current);
     }
-    const slides = apiBannerSlides ?? BANNER_SLIDES;
-    if (slides.length < 2) return;
+    // Only use API banners — no local fallback
+    if (apiBannerSlides.length < 2) return;
     autoSlideRef.current = setInterval(() => {
-      setSlide((prev) => (prev + 1) % slides.length);
+      setSlide((prev) => (prev + 1) % apiBannerSlides.length);
     }, 4200);
   };
 
@@ -778,7 +751,7 @@ export function HomeScreen({
         clearInterval(autoSlideRef.current);
       }
     };
-  }, []);
+  }, [apiBannerSlides.length]);
 
   useEffect(() => {
     const pulse = Animated.loop(
@@ -800,7 +773,7 @@ export function HomeScreen({
       onPanResponderRelease: (_, gs) => {
         if (gs.dx < -40) {
           setSlide((prev) => {
-            const slides = apiBannerSlides ?? BANNER_SLIDES;
+            const slides = apiBannerSlides;
             const next = (prev + 1) % slides.length;
             goToSlide(next);
             return next;
@@ -808,7 +781,7 @@ export function HomeScreen({
           resetAutoSlide();
         } else if (gs.dx > 40) {
           setSlide((prev) => {
-            const slides = apiBannerSlides ?? BANNER_SLIDES;
+            const slides = apiBannerSlides;
             const next = (prev - 1 + slides.length) % slides.length;
             goToSlide(next);
             return next;
@@ -1022,19 +995,22 @@ export function HomeScreen({
 
       <View style={styles.body}>
         <Animated.View style={{ opacity: fadeAnim }} {...panResponder.panHandlers}>
-          {(() => {
-            const slides = apiBannerSlides ?? BANNER_SLIDES;
-            const s = slide % slides.length;
+          {apiBannerSlides.length > 0 ? (() => {
+            const s = slide % apiBannerSlides.length;
             return (
-              <View style={[styles.bannerCard, { height: heroImageHeight, backgroundColor: slides[s].backgroundColor }]}>
-                <Image source={slides[s].image} style={styles.bannerImage} resizeMode={slides[s].resizeMode} />
+              <View style={[styles.bannerCard, { height: heroImageHeight, backgroundColor: apiBannerSlides[s]?.backgroundColor ?? '#192F67' }]}>
+                <Image source={apiBannerSlides[s]?.image} style={styles.bannerImage} resizeMode={apiBannerSlides[s]?.resizeMode ?? 'cover'} />
               </View>
             );
-          })()}
+          })() : (
+            <View style={[styles.bannerCard, { height: heroImageHeight, backgroundColor: '#192F67', alignItems: 'center', justifyContent: 'center' }]}>
+              <Text style={{ color: '#ffffff88', fontSize: 13 }}>No banners available</Text>
+            </View>
+          )}
         </Animated.View>
 
         <View style={styles.dotsRow}>
-          {(apiBannerSlides ?? BANNER_SLIDES).map((_, index) => (
+          {apiBannerSlides.map((_, index) => (
             <TouchableOpacity
               key={index}
               onPress={() => {
