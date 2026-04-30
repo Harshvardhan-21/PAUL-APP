@@ -1,0 +1,58 @@
+{
+  "expo": {
+    "name": "SRV Electricals",
+    "slug": "srv-electricals",
+    "scheme": "srv-electricals",
+    "version": "1.0.0",
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow SRV Electricals to access your camera so you can scan QR codes and capture product images."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow SRV Electricals to access your location so we can fill your current address during signup.",
+          "locationWhenInUsePermission": "Allow SRV Electricals to access your location so we can fill your current address during signup."
+        }
+      ],
+      "expo-mail-composer"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": ["**/*"],
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#F5F0E8"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#F5F0E8"
+      },
+      "package": "com.harshvsinha.srvelectricals"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "extra": {
+      "router": {}
+    }
+  }
+}

@@ -1,0 +1,113 @@
+import { API_BASE_URL } from './config';
+import { storage } from './storage';
+
+type RequestOptions = {
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  body?: object;
+  auth?: boolean;
+  params?: Record<string, string | number | undefined>;
+};
+
+function buildUrl(path: string, params?: Record<string, string | number | undefined>) {
+  let url = `${API_BASE_URL}${path}`;
+  if (params) {
+    const query = Object.entries(params)
+      .filter(([, v]) => v !== undefined && v !== null)
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+      .join('&');
+    if (query) url += `?${query}`;
+  }
+  return url;
+}
+
+// Fetch with 15s timeout
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    return res;
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      throw new Error('Request timed out. Check your network connection.');
+    }
+    throw new Error('Network error. Make sure backend is running and IP is correct.');
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const { method = 'GET', body, auth = false, params } = options;
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (auth) {
+    const token = await storage.getAccessToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const url = buildUrl(path, params);
+
+  const response = await fetchWithTimeout(url, {
+    method,
+    headers,
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+
+  // Token expired — try refresh
+  if (response.status === 401 && auth) {
+    const refreshToken = await storage.getRefreshToken();
+    if (refreshToken) {
+      try {
+        const refreshRes = await fetchWithTimeout(`${API_BASE_URL}/mobile/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+        if (refreshRes.ok) {
+          const { accessToken } = await refreshRes.json();
+          await storage.setTokens(accessToken, refreshToken);
+          headers['Authorization'] = `Bearer ${accessToken}`;
+          const retryRes = await fetchWithTimeout(url, {
+            method,
+            headers,
+            ...(body ? { body: JSON.stringify(body) } : {}),
+          });
+          if (!retryRes.ok) {
+            const err = await retryRes.json().catch(() => ({}));
+            throw new Error((err as any).message || `Request failed: ${retryRes.status}`);
+          }
+          return retryRes.json() as Promise<T>;
+        }
+      } catch {
+        await storage.clearAll();
+        throw new Error('SESSION_EXPIRED');
+      }
+    }
+    throw new Error('SESSION_EXPIRED');
+  }
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as any).message || `Request failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+export const api = {
+  get: <T>(path: string, params?: Record<string, string | number | undefined>, auth = false) =>
+    request<T>(path, { method: 'GET', params, auth }),
+
+  post: <T>(path: string, body: object, auth = false) =>
+    request<T>(path, { method: 'POST', body, auth }),
+
+  patch: <T>(path: string, body: object, auth = false) =>
+    request<T>(path, { method: 'PATCH', body, auth }),
+
+  delete: <T>(path: string, auth = false) =>
+    request<T>(path, { method: 'DELETE', auth }),
+};
