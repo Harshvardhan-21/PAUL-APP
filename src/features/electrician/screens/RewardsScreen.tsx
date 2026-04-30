@@ -11,9 +11,11 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import Svg, { Circle, Path, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { AppIcon, shared } from '@/features/profile/components/ProfileShared';
 import { withWebSafeNativeDriver } from '@/shared/animations/nativeDriver';
 import { useAppData } from '@/shared/context/AppDataContext';
+import { useAuth } from '@/shared/context/AuthContext';
 import { usePreferenceContext } from '@/shared/preferences';
 import { createShadow } from '@/shared/theme/shadows';
 import type { GiftProduct } from '@/shared/api';
@@ -34,8 +36,32 @@ const C = {
   successLight: '#e6fdf0',
 };
 
-const TABS = ['All', 'Electrician', 'Dealer'] as const;
-type Tab = (typeof TABS)[number];
+// ── Coin SVG Icon ─────────────────────────────────────────────────────────────
+function CoinIcon({ size = 18 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Defs>
+        <RadialGradient id="coinGrad" cx="40%" cy="35%" r="65%">
+          <Stop offset="0%" stopColor="#FFE066" />
+          <Stop offset="60%" stopColor="#F59E0B" />
+          <Stop offset="100%" stopColor="#B45309" />
+        </RadialGradient>
+      </Defs>
+      {/* Coin body */}
+      <Circle cx="12" cy="12" r="10" fill="url(#coinGrad)" />
+      {/* Shine */}
+      <Circle cx="9" cy="8.5" r="2.5" fill="rgba(255,255,255,0.28)" />
+      {/* ₹ symbol */}
+      <Path
+        d="M9.5 8h5M9.5 10.5h5M12 10.5V16M9.5 13h3.5"
+        stroke="#7C3A00"
+        strokeWidth={1.4}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
 
 // ── Gift Card ─────────────────────────────────────────────────────────────────
 function GiftCard({
@@ -111,9 +137,7 @@ function GiftCard({
 
           {/* Points row */}
           <View style={styles.ptsRow}>
-            <View style={styles.coinWrap}>
-              <Text style={styles.coinEmoji}>🪙</Text>
-            </View>
+            <CoinIcon size={18} />
             <Text style={[styles.pts, canAfford ? styles.ptsAffordable : styles.ptsLocked]}>
               {gift.pointsRequired.toLocaleString('en-IN')} {tx('Pts.')}
             </Text>
@@ -128,21 +152,23 @@ function GiftCard({
 export function RewardsScreen({ onBack }: { onBack?: () => void }) {
   const { darkMode, tx, theme } = usePreferenceContext();
   const { giftProducts, wallet, walletSummary, redeemReward, refreshAll } = useAppData();
+  const { role } = useAuth();
   const { width } = useWindowDimensions();
-  const [activeTab, setActiveTab] = useState<Tab>('All');
   const [redeemingId, setRedeemingId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const currentPoints = wallet?.totalPoints ?? walletSummary?.totalPoints ?? 0;
-  const cardW = Math.floor((width - 32 - 12) / 2); // 2 columns, 16px padding each side, 12px gap
+  const cardW = Math.floor((width - 32 - 12) / 2);
 
+  // Auto-filter by user role — no tabs needed
+  // Show gifts targeted to this role OR targeted to 'all'
   const filtered = useMemo<GiftProduct[]>(() => {
-    if (activeTab === 'All') return giftProducts;
-    const roleKey = activeTab.toLowerCase();
-    return giftProducts.filter(
-      (g) => !g.targetRole || g.targetRole === 'both' || g.targetRole.toLowerCase() === roleKey,
-    );
-  }, [activeTab, giftProducts]);
+    if (!role) return giftProducts;
+    return giftProducts.filter((g) => {
+      const t = (g.targetRole ?? 'all').toLowerCase();
+      return t === 'all' || t === 'both' || t === role.toLowerCase();
+    });
+  }, [giftProducts, role]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -180,8 +206,6 @@ export function RewardsScreen({ onBack }: { onBack?: () => void }) {
           onPress: async () => {
             try {
               setRedeemingId(gift.id);
-              // Use rewardScheme redemption flow — gift.id is the product id
-              // We pass it as schemeId; backend handles gift products via product id
               await redeemReward({ schemeId: gift.id, note: gift.name });
               Alert.alert(
                 '🎁 ' + tx('Redemption Requested!'),
@@ -222,29 +246,16 @@ export function RewardsScreen({ onBack }: { onBack?: () => void }) {
         <View style={[styles.pointsBanner, darkMode && styles.pointsBannerDark]}>
           <View>
             <Text style={[styles.pointsLabel, darkMode && styles.pointsLabelDark]}>{tx('Your Points')}</Text>
-            <Text style={[styles.pointsValue, darkMode && styles.pointsValueDark]}>
-              🪙 {currentPoints.toLocaleString('en-IN')} {tx('pts')}
-            </Text>
+            <View style={styles.pointsValueRow}>
+              <CoinIcon size={22} />
+              <Text style={[styles.pointsValue, darkMode && styles.pointsValueDark]}>
+                {' '}{currentPoints.toLocaleString('en-IN')} {tx('pts')}
+              </Text>
+            </View>
           </View>
           <View style={styles.pointsHint}>
             <Text style={styles.pointsHintText}>{tx('Scan products to earn more')}</Text>
           </View>
-        </View>
-
-        {/* Tabs */}
-        <View style={[styles.tabRow, darkMode && styles.tabRowDark]}>
-          {TABS.map((tab) => (
-            <TouchableOpacity
-              key={tab}
-              onPress={() => setActiveTab(tab)}
-              style={[styles.tab, activeTab === tab && styles.tabActive]}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive, darkMode && activeTab !== tab && { color: '#64748B' }]}>
-                {tx(tab)}
-              </Text>
-            </TouchableOpacity>
-          ))}
         </View>
 
         {/* Grid */}
@@ -296,26 +307,11 @@ const styles = StyleSheet.create({
   pointsBannerDark: { backgroundColor: '#111827', borderColor: '#243043' },
   pointsLabel: { fontSize: 12, fontWeight: '600', color: C.textMuted, marginBottom: 4 },
   pointsLabelDark: { color: '#94A3B8' },
+  pointsValueRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   pointsValue: { fontSize: 22, fontWeight: '900', color: C.textDark },
   pointsValueDark: { color: '#F8FAFC' },
   pointsHint: { backgroundColor: C.goldLight, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6 },
   pointsHintText: { fontSize: 11, fontWeight: '700', color: C.goldDark },
-
-  // Tabs
-  tabRow: {
-    flexDirection: 'row',
-    backgroundColor: C.surface,
-    borderRadius: 14,
-    padding: 4,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  tabRowDark: { backgroundColor: '#111827', borderColor: '#243043' },
-  tab: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 10 },
-  tabActive: { backgroundColor: C.primaryLight },
-  tabText: { fontSize: 13, fontWeight: '700', color: C.textMuted },
-  tabTextActive: { color: C.primary, fontWeight: '800' },
 
   // Grid
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
@@ -386,9 +382,7 @@ const styles = StyleSheet.create({
   mrp: { fontSize: 11, color: C.textMuted, marginBottom: 6 },
 
   // Points row
-  ptsRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  coinWrap: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
-  coinEmoji: { fontSize: 14 },
+  ptsRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   pts: { fontSize: 14, fontWeight: '900' },
   ptsAffordable: { color: C.primary },
   ptsLocked: { color: C.textMuted },

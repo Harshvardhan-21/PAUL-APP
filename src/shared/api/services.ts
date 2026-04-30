@@ -508,6 +508,8 @@ export type AppSettings = {
   scanEnabled: boolean;
   giftsEnabled: boolean;
   referralEnabled: boolean;
+  playStoreUrl?: string;
+  appStoreUrl?: string;
 };
 
 export type ScanResult = {

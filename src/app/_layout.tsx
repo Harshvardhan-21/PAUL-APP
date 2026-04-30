@@ -3,6 +3,7 @@ import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-c
 import { AuthProvider } from '../shared/context/AuthContext';
 import { FestivalThemeProvider } from '../shared/context/FestivalThemeContext';
 import { AppDataProvider } from '../shared/context/AppDataContext';
+import { AppGate } from '../shared/components/AppGate';
 
 export default function RootLayout() {
   return (
@@ -10,7 +11,9 @@ export default function RootLayout() {
       <AuthProvider>
         <FestivalThemeProvider>
           <AppDataProvider>
-            <Stack screenOptions={{ headerShown: false }} />
+            <AppGate>
+              <Stack screenOptions={{ headerShown: false }} />
+            </AppGate>
           </AppDataProvider>
         </FestivalThemeProvider>
       </AuthProvider>
