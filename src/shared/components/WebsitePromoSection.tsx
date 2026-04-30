@@ -10,6 +10,7 @@ const WEBSITE_URL  = 'https://srvelectricals.com';
 const WHATSAPP_URL = 'https://wa.me/918837684004';
 const INSTAGRAM_URL = 'https://www.instagram.com/srvelectricals_11';
 const FACEBOOK_URL  = 'https://www.facebook.com/people/SRV-Electricals/61575756084140/';
+const TWITTER_URL   = 'https://x.com/Srv_Electricals';
 
 // ── Icons ──────────────────────────────────────────────────────────────────
 
@@ -78,6 +79,20 @@ function FacebookBrandIcon({ size = 26 }: { size?: number }) {
       {/* f letter */}
       <Path
         d="M20 10h-2.5A1.5 1.5 0 0 0 16 11.5V14h4l-.5 3H16v8h-3v-8h-2v-3h2v-2.5A4.5 4.5 0 0 1 17.5 7H20v3z"
+        fill="#FFFFFF"
+      />
+    </Svg>
+  );
+}
+
+function TwitterBrandIcon({ size = 26 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+      {/* Black background */}
+      <Circle cx="16" cy="16" r="16" fill="#000000" />
+      {/* X logo */}
+      <Path
+        d="M18.5 14.2L24.3 7h-1.4l-5 5.8L13.8 7H9l6.1 8.9L9 23h1.4l5.3-6.2L20.2 23H25l-6.5-8.8zm-1.9 2.2l-.6-.9-5-7.1h2.1l4 5.7.6.9 5.2 7.4h-2.1l-4.2-6z"
         fill="#FFFFFF"
       />
     </Svg>
@@ -160,6 +175,13 @@ export function WebsitePromoSection({ darkMode }: { darkMode: boolean }) {
       url: FACEBOOK_URL,
       Icon: FacebookBrandIcon,
       bg: '#1877F2',
+    },
+    {
+      key: 'twitter',
+      label: 'Twitter',
+      url: TWITTER_URL,
+      Icon: TwitterBrandIcon,
+      bg: '#000000',
     },
   ];
 
